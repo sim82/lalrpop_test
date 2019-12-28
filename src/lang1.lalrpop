@@ -1,21 +1,27 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Opcode, Ident, Stmt};
+use crate::{ast::{Expr, Opcode, Ident, Stmt}, parser::binop};
 use lalrpop_util::ErrorRecovery;
 
 //grammar;
 grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
-LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, *expr);
-PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs.iter().deref().collect());
+pub Program = Line*;
+
+Line = {
+    <LetBindingStmt> ";", <PrintStmt> ";"
+}
+
+LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr);
+PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
 
 pub Exprs = Comma<Expr>; // (0)
 
 
 
-Tier<Op,NextTier>: Box<Expr> = {
-    Tier<Op,NextTier> Op NextTier => Box::new(Expr::Op(<>)),
+Tier<Op,NextTier>: Expr = {
+    Tier<Op,NextTier> Op NextTier => binop(<>),
     NextTier
-};
+}; 
 
 Expr = Tier<ExprOp, Factor>;
 Factor = Tier<FactorOp, Term>;
@@ -31,10 +37,10 @@ FactorOp: Opcode = {
 };
 
 
-Term: Box<Expr> = {
-    Num => Box::new(Expr::Number(<>)),
+Term: Expr = {
+    Num => Expr::Number(<>),
     "(" <Expr> ")",
-    ! => { errors.push(<>); Box::new(Expr::Error) },
+    ! => { errors.push(<>); Expr::Error },
 };
 
 Ident: Ident = r"[a-zA-Z_]\w*" => <>.into();

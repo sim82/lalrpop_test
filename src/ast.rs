@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Error, Formatter};
 
+#[derive(Debug)]
 pub enum Stmt {
     LetBinding(Ident, Expr),
     Print(Vec<Expr>),
