@@ -1,0 +1,15 @@
+[package]
+name = "lalrpop_test"
+version = "0.1.0"
+authors = ["sim82 <simberger@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[build-dependencies] # <-- We added this and everything after!
+lalrpop = "0.17.2"
+
+[dependencies]
+lalrpop-util = "0.17.2"
+regex ="0.2"
