@@ -1,22 +1,37 @@
 use std::str::FromStr;
-use crate::{ast::{Expr, Opcode, Ident, Stmt}, parser::binop};
+use crate::{ast::{Expr, Opcode, Ident, Stmt}, parser::binop, HandleMapDedup};
 use lalrpop_util::ErrorRecovery;
 
 //grammar;
-grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
+grammar<'err>(env: &mut dyn HandleMapDedup<&'input str>, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
-pub Program = Line*;
+pub Program = Stmt*;
 
-Line = {
-    <LetBindingStmt> ";", <PrintStmt> ";"
+//Line = {
+//    <Stmt>
+//}
+
+Stmt : Stmt = {
+    <InlineStmt> ";",
+    BlockStmt,
+    IfStmt,
 }
 
+InlineStmt = {
+//   <ExprStmt>,
+    <LetBindingStmt>,
+    <PrintStmt>
+}
+
+IfStmt: Stmt = "if" <expr:Expr> <if_body:BlockStmt> <else_body:("else" <Stmt>)?> => match else_body {
+    Some(body) => Stmt::IfElse(expr, Box::new(if_body), Some(Box::new(body))),
+    None => Stmt::IfElse(expr, Box::new(if_body), None),
+};
+BlockStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>);
 LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr);
 PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
-
+//ExprStmt : Stmt = <Expr> => Stmt::Expr(<>);
 pub Exprs = Comma<Expr>; // (0)
-
-
 
 Tier<Op,NextTier>: Expr = {
     Tier<Op,NextTier> Op NextTier => binop(<>),
@@ -39,11 +54,12 @@ FactorOp: Opcode = {
 
 Term: Expr = {
     Num => Expr::Number(<>),
+    Ident => Expr::EnvLoad(<>),
     "(" <Expr> ")",
     ! => { errors.push(<>); Expr::Error },
 };
 
-Ident: Ident = r"[a-zA-Z_]\w*" => <>.into();
+Ident: Ident = r"[a-zA-Z_]\w*" => env.get_dedup(<>);
 
 Literal: i64 = {
     "true" => 1,

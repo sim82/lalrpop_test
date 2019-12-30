@@ -1,16 +1,34 @@
+use handy::{Handle, HandleMap};
 use std::fmt::{Debug, Error, Formatter};
 
 #[derive(Debug)]
 pub enum Stmt {
     LetBinding(Ident, Expr),
     Print(Vec<Expr>),
+    IfElse(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    Block(Vec<Stmt>),
 }
 
-pub type Ident = String;
+pub trait HandleMapDedup<T: Eq> {
+    fn get_dedup(&mut self, item: T) -> Handle;
+}
+
+impl<T: Eq> HandleMapDedup<T> for HandleMap<T> {
+    fn get_dedup(&mut self, item: T) -> Handle {
+        if let Some(h) = self.find_handle(&item) {
+            h
+        } else {
+            self.insert(item)
+        }
+    }
+}
+
+pub type Ident = Handle;
 
 // #[derive(Debug)]
 pub enum Expr {
     Number(i64),
+    EnvLoad(Ident),
     Op(Box<Expr>, Opcode, Box<Expr>),
     Error,
 }
@@ -29,6 +47,7 @@ impl Debug for Expr {
         match *self {
             Number(n) => write!(fmt, "{:?}", n),
             Op(ref l, op, ref r) => write!(fmt, "({:?} {:?} {:?})", l, op, r),
+            EnvLoad(ident) => write!(fmt, "load({:?})", ident),
             Error => write!(fmt, "error"),
         }
     }
@@ -44,4 +63,17 @@ impl Debug for Opcode {
             Sub => write!(fmt, "-"),
         }
     }
+}
+
+#[test]
+fn test_handy() {
+    let mut map = HandleMap::new();
+    let x = "hello hello blub";
+    let h1 = map.get_dedup(&x[0..5]);
+    let h2 = map.get_dedup(&x[6..11]);
+    let h3 = map.get_dedup(&x[12..16]);
+    assert_eq!(h1, h2);
+    assert!(h1 != h3);
+    assert_eq!(map.get(h1).unwrap(), &"hello");
+    assert_eq!(map.get(h3).unwrap(), &"blub");
 }
