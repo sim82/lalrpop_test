@@ -30,7 +30,7 @@ enum ArithOp {
 }
 
 impl ArithOp {
-    fn eval(&self, a: i64, b: i64) -> i64 {
+    pub fn eval(&self, a: i64, b: i64) -> i64 {
         match *self {
             ArithOp::Add => a + b,
             ArithOp::Sub => a - b,
@@ -40,28 +40,30 @@ impl ArithOp {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
-enum JmpType {
-    Abs,
-    Rel,
-}
+// #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+// enum JmpType {
+//     Abs,
+//     Rel,
+// }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 enum Cond {
-    True,
+    Always,
     Zero,
     NonZero,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 enum Op {
+    Noop,
     PushConst(u16),
     PushStack(i16),
     PushImmediate(i16),
     PushImmediate24(Uint24),
     Arith(ArithOp),
-    Jmp(JmpType, Cond),
+    Jmp(Cond),
     Output(u16),
+    Break,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,7 +73,7 @@ struct Vm {
     code: Vec<Op>,
     ip: usize,
 }
-struct IoChannels {
+pub struct IoChannels {
     channels: Vec<Sender<i64>>,
 }
 impl IoChannels {
@@ -118,20 +120,21 @@ impl Vm {
                     let v: u32 = v.into();
                     self.push(v as i64)
                 }
-                Op::Jmp(jmp_type, jmp_cond) => {
+                Op::Jmp(jmp_cond) => {
                     let cond = match jmp_cond {
-                        Cond::True => true,
+                        Cond::Always => true,
                         Cond::Zero => self.pop() == 0,
                         Cond::NonZero => self.pop() != 0,
                     };
                     let dst = self.pop();
-                    debug!("jmp: {} {:?} {}", cond, jmp_type, dst);
+                    debug!("jmp: {} {}", cond, dst);
 
                     if cond {
-                        self.ip = match jmp_type {
-                            JmpType::Abs => dst as usize,
-                            JmpType::Rel => (self.ip as i64 + dst) as usize,
-                        };
+                        self.ip = (self.ip as i64 + dst) as usize;
+                        //  match jmp_type {
+                        //     JmpType::Abs => dst as usize,
+                        //     JmpType::Rel => (self.ip as i64 + dst) as usize,
+                        // };
                         if self.ip >= self.code.len() {
                             panic!(
                                 "jmp to invalid code location {} (of {})",
@@ -148,6 +151,10 @@ impl Vm {
                         io.channels[channel as usize].send(v).unwrap();
                     }
                 }
+                Op::Noop => (),
+                Op::Break => {
+                    break;
+                }
             }
             self.ip += 1;
         }
@@ -157,7 +164,7 @@ impl Vm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::mpsc::channel;
     #[test]
     fn arith() {
         let mut vm = Vm::new();
@@ -216,13 +223,16 @@ mod tests {
         vm.data.push(666);
         vm.data.push(777);
 
-        vm.stack.push(4);
-        vm.stack.push(0);
-        vm.code.push(Op::Jmp(JmpType::Rel, Cond::NonZero));
+        vm.code.push(Op::PushImmediate(4));
+        vm.code.push(Op::PushImmediate(1));
+        vm.code.push(Op::Jmp(Cond::NonZero));
         vm.code.push(Op::PushConst(2));
         vm.code.push(Op::PushImmediate(2));
-        vm.code.push(Op::Jmp(JmpType::Rel, Cond::True));
+        vm.code.push(Op::Jmp(Cond::Always));
         vm.code.push(Op::PushConst(1));
+        vm.code.push(Op::Noop);
+        println!("{}", serde_yaml::to_string(&vm).unwrap());
+
         vm.exec(None);
         println!("{}", vm.pop());
     }
