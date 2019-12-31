@@ -1,0 +1,17 @@
+section .const
+123
+666
+777
+
+section .code
+    push 1
+    push 1
+    add
+    jmp nz else
+    push const.2
+    output #0
+    jmp always end
+else:
+    push const.1
+    output #0
+end:

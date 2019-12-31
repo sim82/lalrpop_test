@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::mpsc::Sender;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy)]
-struct Uint24([u8; 3]);
+pub struct Uint24([u8; 3]);
 
 impl From<u32> for Uint24 {
     fn from(v: u32) -> Self {
@@ -22,7 +22,7 @@ impl Into<u32> for Uint24 {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
-enum ArithOp {
+pub enum ArithOp {
     Add,
     Sub,
     Mul,
@@ -47,14 +47,14 @@ impl ArithOp {
 // }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
-enum Cond {
+pub enum Cond {
     Always,
     Zero,
     NonZero,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
-enum Op {
+pub enum Op {
     Noop,
     PushConst(u16),
     PushStack(i16),
@@ -67,14 +67,14 @@ enum Op {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Vm {
-    data: Vec<i64>,
+pub struct Vm {
+    pub data: Vec<i64>,
     stack: Vec<i64>,
-    code: Vec<Op>,
+    pub code: Vec<Op>,
     ip: usize,
 }
 pub struct IoChannels {
-    channels: Vec<Sender<i64>>,
+    pub channels: Vec<Sender<i64>>,
 }
 impl IoChannels {
     pub fn new() -> Self {
@@ -121,12 +121,12 @@ impl Vm {
                     self.push(v as i64)
                 }
                 Op::Jmp(jmp_cond) => {
+                    let dst = self.pop();
                     let cond = match jmp_cond {
                         Cond::Always => true,
                         Cond::Zero => self.pop() == 0,
                         Cond::NonZero => self.pop() != 0,
                     };
-                    let dst = self.pop();
                     debug!("jmp: {} {}", cond, dst);
 
                     if cond {
@@ -223,8 +223,8 @@ mod tests {
         vm.data.push(666);
         vm.data.push(777);
 
-        vm.code.push(Op::PushImmediate(4));
         vm.code.push(Op::PushImmediate(1));
+        vm.code.push(Op::PushImmediate(4));
         vm.code.push(Op::Jmp(Cond::NonZero));
         vm.code.push(Op::PushConst(2));
         vm.code.push(Op::PushImmediate(2));

@@ -1,0 +1,66 @@
+use crate::{asm::{Stmt, Section, Cond, ArithOp}};
+
+grammar;
+
+pub Program = Section*;
+
+Section : Section = {
+    SectionData => Section::Data(<>), 
+    SectionCode => Section::Code(<>)
+}
+
+SectionData = "section" ".const" <DataDef*>;
+DataDef = Num;
+
+SectionCode = "section" ".code" <Stmt*>;
+
+Stmt = {
+    PushStmt,
+    JmpStmt,
+    ArithStmt,
+    OutputStmt,
+    Label => Stmt::Label(<>),
+    NoopStmt,
+}
+
+PushStmt : Stmt = {
+    "push" <Num> => Stmt::PushInline(<>),
+    "push" <ConstRef> => Stmt::PushConst(<>),
+}
+
+JmpStmt : Stmt = "jmp" <Condition> <Ident> => Stmt::Jmp(<>);
+
+ArithStmt : Stmt = {
+    "add" => Stmt::Arith(ArithOp::Add),
+    "sub" => Stmt::Arith(ArithOp::Sub),
+    "mul" => Stmt::Arith(ArithOp::Mul),
+    "div" => Stmt::Arith(ArithOp::Div),
+}
+
+OutputStmt : Stmt = "output" "#"? <NumDec> => Stmt::Output(<>); // allow optional '#' simply because IO channels are so 60s...  
+
+NoopStmt : Stmt = "noop" => Stmt::Noop;
+
+Condition : Cond = {
+    "always" => Cond::Always,
+    "nz" => Cond::NonZero,
+    "z" => Cond::Zero,
+}
+
+Label = <Ident> ":";
+//Label: String = r"[a-zA-Z_]\w*:" => String::from(<>);
+
+Ident: String = r"[a-zA-Z_]\w*" => String::from(<>);
+//ConstRef: String = r"const\.[a-zA-Z_]\w*" => String::from(<>);
+ConstRef : i64 = "const." <r"[0-9]+"> => <>.parse().unwrap();
+
+Num: i64 = {
+    NumDec,
+    NumHex,
+    NumOct,
+    NumBin
+}
+NumDec: i64 = r"[0-9]+" => <>.parse().unwrap();
+NumHex: i64 = r"0[xX][0-9a-fA-F]+" => i64::from_str_radix(&<>[2..], 16).unwrap();
+NumOct: i64 = r"0[oO][0-7]+" => i64::from_str_radix(&<>[2..], 8).unwrap();
+NumBin: i64 = r"0[bB][01]+" => i64::from_str_radix(&<>[2..], 2).unwrap();
