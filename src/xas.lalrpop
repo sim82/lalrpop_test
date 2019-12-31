@@ -19,6 +19,7 @@ Stmt = {
     JmpStmt,
     ArithStmt,
     OutputStmt,
+    PopStmt,
     Label => Stmt::Label(<>),
     NoopStmt,
 }
@@ -26,6 +27,7 @@ Stmt = {
 PushStmt : Stmt = {
     "push" <Num> => Stmt::PushInline(<>),
     "push" <ConstRef> => Stmt::PushConst(<>),
+    "push" <StackRef> => Stmt::PushStack(<>),
 }
 
 JmpStmt : Stmt = "jmp" <Condition> <Ident> => Stmt::Jmp(<>);
@@ -38,6 +40,10 @@ ArithStmt : Stmt = {
 }
 
 OutputStmt : Stmt = "output" "#"? <NumDec> => Stmt::Output(<>); // allow optional '#' simply because IO channels are so 60s...  
+PopStmt : Stmt = {
+    "pop" => Stmt::Pop(1),
+    "pop" <Num> => Stmt::Pop(<>),
+}
 
 NoopStmt : Stmt = "noop" => Stmt::Noop;
 
@@ -53,6 +59,7 @@ Label = <Ident> ":";
 Ident: String = r"[a-zA-Z_]\w*" => String::from(<>);
 //ConstRef: String = r"const\.[a-zA-Z_]\w*" => String::from(<>);
 ConstRef : i64 = "const." <r"[0-9]+"> => <>.parse().unwrap();
+StackRef : i64 = "stack." <r"[0-9]+"> => <>.parse().unwrap();
 
 Num: i64 = {
     NumDec,

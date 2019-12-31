@@ -1,4 +1,4 @@
-pub use crate::bytecode::{ArithOp, Cond, Op};
+pub use crate::bytecode::{ArithOp, Cond, Op, PopMode};
 use std::collections::HashMap;
 
 trait Disass {
@@ -33,9 +33,11 @@ impl Disass for Section {
 pub enum Stmt {
     PushInline(i64),
     PushConst(i64),
+    PushStack(i64),
     Jmp(Cond, String),
     Arith(ArithOp),
     Output(i64),
+    Pop(i64),
     Label(String),
     Noop,
 }
@@ -44,6 +46,7 @@ impl Disass for Stmt {
         match self {
             Stmt::PushInline(v) => writeln!(out, "    push {}", v),
             Stmt::PushConst(v) => writeln!(out, "    push const.{}", v),
+            Stmt::PushStack(v) => writeln!(out, "    push stack.{}", v),
             Stmt::Jmp(cond, label) => {
                 let cond = match cond {
                     Cond::Always => "always",
@@ -57,6 +60,8 @@ impl Disass for Stmt {
             Stmt::Arith(ArithOp::Mul) => writeln!(out, "    mul"),
             Stmt::Arith(ArithOp::Div) => writeln!(out, "    div"),
             Stmt::Output(channel) => writeln!(out, "    output #{}", channel),
+            Stmt::Pop(num) if *num == 1 => writeln!(out, "    pop"),
+            Stmt::Pop(num) => writeln!(out, "    pop {}", num),
             Stmt::Noop => writeln!(out, "    noop"),
             Stmt::Label(label) => writeln!(out, "{}:", label),
         }
@@ -66,33 +71,62 @@ impl Disass for Stmt {
 
 pub trait BytecodeEmit {
     fn num_ops(&self) -> usize;
-    fn emit(&self, labels: &HashMap<String, usize>, out: &mut Vec<Op>);
+    fn emit(&self, labels: &HashMap<String, usize>, consts: &Vec<i64>, out: &mut Vec<Op>);
 }
 
 impl BytecodeEmit for Stmt {
     fn num_ops(&self) -> usize {
         match self {
-            Stmt::PushInline(_) => 1,
-            Stmt::PushConst(_) => 1,
-            Stmt::Jmp(_, _) => 2,
-            Stmt::Arith(_) => 1,
-            Stmt::Output(_) => 1,
+            // Stmt::PushInline(_) => 1,
+            // Stmt::PushConst(_) => 1,
+            // Stmt::PushStack(_) => 1,
+            // Stmt::Jmp(_, _) => 2,
+            // Stmt::Arith(_) => 1,
+            // Stmt::Output(_) => 1,
+            // Stmt::Pop(_) => 1,
+            // Stmt::Label(_) => 0,
+            // Stmt::Noop => 1,
             Stmt::Label(_) => 0,
-            Stmt::Noop => 1,
+            Stmt::PushInline(_)
+            | Stmt::PushConst(_)
+            | Stmt::PushStack(_)
+            | Stmt::Arith(_)
+            | Stmt::Output(_)
+            | Stmt::Noop => 1,
+            Stmt::Pop(n) if *n == 1 => 1,
+            Stmt::Jmp(_, _) | Stmt::Pop(_) => 2,
         }
     }
-    fn emit(&self, labels: &HashMap<String, usize>, out: &mut Vec<Op>) {
+    fn emit(&self, labels: &HashMap<String, usize>, consts: &Vec<i64>, out: &mut Vec<Op>) {
         match self {
             Stmt::PushInline(v) if *v <= 0x7FFF => out.push(Op::PushImmediate(*v as i16)),
-            Stmt::PushInline(v) => out.push(Op::PushImmediate24((*v as u32).into())),
+            Stmt::PushInline(v) if *v <= 0xFFFFFF => {
+                out.push(Op::PushImmediate24((*v as u32).into()))
+            }
+            Stmt::PushInline(v) => {
+                let i = consts
+                    .iter()
+                    .position(|x| x == v)
+                    .expect("missing const for large value");
+                out.push(Op::PushConst(i as u16))
+            }
             Stmt::PushConst(i) => out.push(Op::PushConst(*i as u16)),
+            Stmt::PushStack(i) => out.push(Op::PushStack(*i as i16)),
             Stmt::Jmp(cond, label) => {
-                let rel_addr = labels.get(label).unwrap() - out.len();
+                let rel_addr = *labels.get(label).unwrap() as i64 - out.len() as i64;
                 out.push(Op::PushImmediate((rel_addr - 1) as i16));
                 out.push(Op::Jmp(cond.clone()));
             }
             Stmt::Arith(op) => out.push(Op::Arith(op.clone())),
             Stmt::Output(channel) => out.push(Op::Output(*channel as u16)),
+            Stmt::Pop(n) if *n == 1 => out.push(Op::Pop(PopMode::One)),
+            Stmt::Pop(n) => {
+                if *n > 0x7FFF {
+                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit / const push
+                }
+                out.push(Op::PushImmediate(*n as i16));
+                out.push(Op::Pop(PopMode::Top));
+            }
             Stmt::Label(_) => (),
             Stmt::Noop => out.push(Op::Noop),
         }
@@ -111,10 +145,23 @@ pub fn label_locations(stmts: &Vec<Stmt>) -> HashMap<String, usize> {
     labels
 }
 
+pub fn extract_constants(stmts: &Vec<Stmt>, c: &mut Vec<i64>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::PushInline(v) if *v > 0xFFFFFF => {
+                if !c.contains(v) {
+                    c.push(v.clone());
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 lalrpop_mod!(pub xas);
 #[test]
 fn asm_basic() {
-    let program = xas::ProgramParser::new()
+    let mut program = xas::ProgramParser::new()
         .parse(include_str!("test.xas"))
         .unwrap();
 
@@ -122,13 +169,15 @@ fn asm_basic() {
     for section in &program {
         section.print_lines(&mut std::io::stdout().lock());
     }
-    if let Section::Code(stmts) = &program[1] {
+    if let (Section::Data(data), Section::Code(stmts)) = (&program[0], &program[1]) {
+        let mut data = data.clone();
         let labels = label_locations(stmts);
+        extract_constants(stmts, &mut data);
         println!("labels: {:?}", labels);
         let mut bc = Vec::new();
 
         for stmt in stmts {
-            stmt.emit(&labels, &mut bc);
+            stmt.emit(&labels, &data, &mut bc);
         }
         bc.push(Op::Noop);
         println!("bc: {:?}", bc);

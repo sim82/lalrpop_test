@@ -47,6 +47,12 @@ impl ArithOp {
 // }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+pub enum PopMode {
+    One,
+    Top,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub enum Cond {
     Always,
     Zero,
@@ -63,6 +69,7 @@ pub enum Op {
     Arith(ArithOp),
     Jmp(Cond),
     Output(u16),
+    Pop(PopMode),
     Break,
 }
 
@@ -72,6 +79,7 @@ pub struct Vm {
     stack: Vec<i64>,
     pub code: Vec<Op>,
     ip: usize,
+    pub num_ops: usize,
 }
 pub struct IoChannels {
     pub channels: Vec<Sender<i64>>,
@@ -90,6 +98,7 @@ impl Vm {
             stack: Vec::new(),
             code: Vec::new(),
             ip: 0,
+            num_ops: 0,
         }
     }
     pub fn push(&mut self, v: i64) {
@@ -101,18 +110,25 @@ impl Vm {
     pub fn peek(&self) -> i64 {
         *self.stack.last().unwrap()
     }
+    pub fn peek_at(&self, offs: i64) -> i64 {
+        if offs < 0 || offs as usize >= self.stack.len() {
+            panic!("stack underflow: {} (of {})", offs, self.stack.len());
+        }
+        self.stack[self.stack.len() - 1 - offs as usize]
+    }
     pub fn exec(&mut self, io: Option<&IoChannels>) {
         while self.ip < self.code.len() {
             let op = self.code[self.ip].clone();
+            self.num_ops += 1;
             debug!("exec: {} {:?}", self.ip, op);
             match op {
                 Op::PushConst(offs) => {
                     self.push(self.data[offs as usize]);
                 }
-                Op::PushStack(offs) => {}
+                Op::PushStack(offs) => self.push(self.peek_at(offs as i64)),
                 Op::Arith(op) => {
-                    let a = self.pop();
                     let b = self.pop();
+                    let a = self.pop();
                     self.push(op.eval(a, b));
                 }
                 Op::PushImmediate(v) => self.push(v as i64),
@@ -148,7 +164,17 @@ impl Vm {
                 Op::Output(channel) => {
                     let v = self.pop();
                     if let Some(io) = &io {
+                        debug!("output #{}: {}", channel, v);
                         io.channels[channel as usize].send(v).unwrap();
+                    }
+                }
+                Op::Pop(PopMode::One) => {
+                    self.pop();
+                }
+                Op::Pop(PopMode::Top) => {
+                    let n = self.pop();
+                    for _ in 0..n {
+                        self.pop();
                     }
                 }
                 Op::Noop => (),
