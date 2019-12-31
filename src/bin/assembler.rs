@@ -2,16 +2,13 @@ use lalrpop_test::{
     asm::{extract_constants, label_locations, xas, BytecodeEmit, Section},
     bytecode::{IoChannels, Op, Vm},
 };
-use std::{
-    io::Read,
-    sync::mpsc::{channel, Receiver, Sender},
-};
+use std::{io::Read, sync::mpsc::channel};
 
 fn main() {
     env_logger::init();
 
     let mut code = String::new();
-    std::io::stdin().lock().read_to_string(&mut code);
+    std::io::stdin().lock().read_to_string(&mut code).unwrap();
     let program = xas::ProgramParser::new().parse(&code[..]).unwrap();
 
     if let (Section::Data(data), Section::Code(stmts)) = (&program[0], &program[1]) {

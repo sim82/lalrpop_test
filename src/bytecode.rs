@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::Sender;
 
@@ -147,10 +147,6 @@ impl Vm {
 
                     if cond {
                         self.ip = (self.ip as i64 + dst) as usize;
-                        //  match jmp_type {
-                        //     JmpType::Abs => dst as usize,
-                        //     JmpType::Rel => (self.ip as i64 + dst) as usize,
-                        // };
                         if self.ip >= self.code.len() {
                             panic!(
                                 "jmp to invalid code location {} (of {})",
@@ -189,6 +185,8 @@ impl Vm {
 
 #[cfg(test)]
 mod tests {
+    use log::info;
+
     use super::*;
     use std::sync::mpsc::channel;
     #[test]
@@ -262,27 +260,27 @@ mod tests {
         vm.exec(None);
         println!("{}", vm.pop());
     }
-}
-#[test]
-fn int24() {
-    let a: Uint24 = 10.into();
-    let b: Uint24 = 0xAABBCC.into();
-    let c: Uint24 = 0xFF.into();
-    let d: Uint24 = 0xFF00.into();
-    let e: Uint24 = 0xFF0000.into();
-    let f: Uint24 = 0xFFFFFF.into();
+    #[test]
+    fn int24() {
+        let a: Uint24 = 10.into();
+        let b: Uint24 = 0xAABBCC.into();
+        let c: Uint24 = 0xFF.into();
+        let d: Uint24 = 0xFF00.into();
+        let e: Uint24 = 0xFF0000.into();
+        let f: Uint24 = 0xFFFFFF.into();
 
-    // print!("{:?}", b);
-    let a1: u32 = a.into();
-    let b1: u32 = b.into();
-    let c1: u32 = c.into();
-    let d1: u32 = d.into();
-    let e1: u32 = e.into();
-    let f1: u32 = f.into();
-    assert_eq!(a1, 10);
-    assert_eq!(b1, 0xAABBCC);
-    assert_eq!(c1, 0xFF);
-    assert_eq!(d1, 0xFF00);
-    assert_eq!(e1, 0xFF0000);
-    assert_eq!(f1, 0xFFFFFF);
+        // print!("{:?}", b);
+        let a1: u32 = a.into();
+        let b1: u32 = b.into();
+        let c1: u32 = c.into();
+        let d1: u32 = d.into();
+        let e1: u32 = e.into();
+        let f1: u32 = f.into();
+        assert_eq!(a1, 10);
+        assert_eq!(b1, 0xAABBCC);
+        assert_eq!(c1, 0xFF);
+        assert_eq!(d1, 0xFF00);
+        assert_eq!(e1, 0xFF0000);
+        assert_eq!(f1, 0xFFFFFF);
+    }
 }

@@ -1,5 +1,5 @@
-use std::str::FromStr;
-use crate::{ast::{Expr, Opcode, Ident, Stmt}, parser::binop, HandleMapDedup};
+//use std::str::FromStr;
+use crate::{ast::{Expr, Opcode, Ident, Stmt, HandleMapDedup}, parser::binop, };
 use lalrpop_util::ErrorRecovery;
 
 //grammar;

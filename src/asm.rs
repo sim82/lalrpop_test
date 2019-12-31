@@ -14,14 +14,14 @@ impl Disass for Section {
     fn print_lines(&self, out: &mut dyn std::io::Write) {
         match self {
             Section::Data(vs) => {
-                writeln!(out, "section .data");
+                writeln!(out, "section .data").unwrap();
 
                 for v in vs {
-                    writeln!(out, "{}", v);
+                    writeln!(out, "{}", v).unwrap();
                 }
             }
             Section::Code(stmts) => {
-                writeln!(out, "section .code");
+                writeln!(out, "section .code").unwrap();
                 for s in stmts {
                     s.print_lines(out);
                 }
@@ -77,15 +77,6 @@ pub trait BytecodeEmit {
 impl BytecodeEmit for Stmt {
     fn num_ops(&self) -> usize {
         match self {
-            // Stmt::PushInline(_) => 1,
-            // Stmt::PushConst(_) => 1,
-            // Stmt::PushStack(_) => 1,
-            // Stmt::Jmp(_, _) => 2,
-            // Stmt::Arith(_) => 1,
-            // Stmt::Output(_) => 1,
-            // Stmt::Pop(_) => 1,
-            // Stmt::Label(_) => 0,
-            // Stmt::Noop => 1,
             Stmt::Label(_) => 0,
             Stmt::PushInline(_)
             | Stmt::PushConst(_)
@@ -161,7 +152,7 @@ pub fn extract_constants(stmts: &Vec<Stmt>, c: &mut Vec<i64>) {
 lalrpop_mod!(pub xas);
 #[test]
 fn asm_basic() {
-    let mut program = xas::ProgramParser::new()
+    let program = xas::ProgramParser::new()
         .parse(include_str!("test.xas"))
         .unwrap();
 
