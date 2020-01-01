@@ -111,10 +111,13 @@ impl Vm {
         *self.stack.last().unwrap()
     }
     pub fn peek_at(&self, offs: i64) -> i64 {
-        if offs < 0 || offs as usize >= self.stack.len() {
-            panic!("stack underflow: {} (of {})", offs, self.stack.len());
+        if offs >= 0 && (offs as usize) < self.stack.len() {
+            return *self
+                .stack
+                .get(self.stack.len() - 1 - offs as usize)
+                .unwrap();
         }
-        self.stack[self.stack.len() - 1 - offs as usize]
+        panic!("stack underflow: {} (of {})", offs, self.stack.len());
     }
     pub fn exec(&mut self, io: Option<&IoChannels>) {
         while self.ip < self.code.len() {

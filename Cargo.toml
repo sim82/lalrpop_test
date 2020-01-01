@@ -21,3 +21,6 @@ bincode = "1"
 log = "0.4"
 env_logger = "0.7"
 # toml = "*"
+
+[profile.dev]
+opt-level = 2

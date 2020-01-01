@@ -1,0 +1,26 @@
+section .const
+123
+666
+777
+
+section .code
+    push 1
+    push 1
+    add
+    jmp nz else
+    push const.2
+    output #0
+    jmp always end
+else:
+    push const.1
+    output #0
+end:
+
+    push 100000000 
+loop:
+    push 1
+    sub
+    push $0
+    pop
+    push stack.0
+    jmp nz loop 

@@ -9,12 +9,14 @@ pub mod bytecode;
 pub mod eval;
 pub mod parser;
 
+lalrpop_mod!(pub lang1);
+
 #[cfg(test)]
 mod test {
+    use super::lang1;
     use crate::eval::Evaluator;
     use handy::HandleMap;
-
-    lalrpop_mod!(lang1);
+    //lalrpop_mod!(lang1);
 
     #[test]
     fn test1() {

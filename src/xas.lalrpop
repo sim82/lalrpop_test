@@ -58,8 +58,8 @@ Label = <Ident> ":";
 
 Ident: String = r"[a-zA-Z_]\w*" => String::from(<>);
 //ConstRef: String = r"const\.[a-zA-Z_]\w*" => String::from(<>);
-ConstRef : i64 = "const." <r"[0-9]+"> => <>.parse().unwrap();
-StackRef : i64 = "stack." <r"[0-9]+"> => <>.parse().unwrap();
+ConstRef : i64 = r"const\.|%" <r"[0-9]+"> => <>.parse().unwrap();
+StackRef : i64 = r"stack\.|\$" <r"[0-9]+"> => <>.parse().unwrap();
 
 Num: i64 = {
     NumDec,

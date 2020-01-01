@@ -1,7 +1,7 @@
 pub use crate::bytecode::{ArithOp, Cond, Op, PopMode};
 use std::collections::HashMap;
 
-trait Disass {
+pub trait Disass {
     fn print_lines(&self, out: &mut dyn std::io::Write);
 }
 
@@ -14,7 +14,7 @@ impl Disass for Section {
     fn print_lines(&self, out: &mut dyn std::io::Write) {
         match self {
             Section::Data(vs) => {
-                writeln!(out, "section .data").unwrap();
+                writeln!(out, "section .const").unwrap();
 
                 for v in vs {
                     writeln!(out, "{}", v).unwrap();
@@ -153,7 +153,7 @@ lalrpop_mod!(pub xas);
 #[test]
 fn asm_basic() {
     let program = xas::ProgramParser::new()
-        .parse(include_str!("test.xas"))
+        .parse(include_str!("test_basic.xas"))
         .unwrap();
 
     println!("{:?}", program);

@@ -19,7 +19,7 @@ end:
 loop:
     push 1
     sub
-    push stack.0
+    push $0
     pop
     push stack.0
     jmp nz loop 
