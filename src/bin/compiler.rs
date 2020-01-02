@@ -8,8 +8,61 @@ use log::debug;
 use std::collections::HashMap;
 use std::io::Read;
 
-struct CodeGen<'env> {
+struct StackFrame {
     bindings: HashMap<Ident, usize>,
+    stack_top: usize,
+}
+
+impl StackFrame {
+    fn new(stack_top: usize) -> StackFrame {
+        StackFrame {
+            bindings: HashMap::new(),
+            stack_top,
+        }
+    }
+}
+
+struct ScopeStack {
+    frames: Vec<StackFrame>,
+}
+
+impl ScopeStack {
+    fn new() -> ScopeStack {
+        ScopeStack {
+            frames: vec![StackFrame::new(0)],
+        }
+    }
+
+    fn push(&mut self) {
+        let top = self.frames.last().unwrap().stack_top;
+        self.frames.push(StackFrame::new(top));
+    }
+    fn pop(&mut self) -> usize {
+        let top = self.frames.last().unwrap().stack_top;
+        self.frames.pop();
+        let new_top = self.frames.last().unwrap().stack_top;
+        assert!(top >= new_top);
+        top - new_top
+    }
+    fn add_binding(&mut self, ident: Ident) {
+        let frame = self.frames.last_mut().unwrap();
+        frame.bindings.insert(ident, frame.stack_top);
+        frame.stack_top += 1;
+    }
+    fn resolve(&self, ident: &Ident) -> Option<usize> {
+        let top = self.frames.last().unwrap().stack_top;
+        for frame in self.frames.iter().rev() {
+            if let Some(pos) = frame.bindings.get(ident) {
+                assert!(top > *pos);
+                return Some(top - pos - 1);
+            }
+        }
+        return None;
+    }
+}
+
+struct CodeGen<'env> {
+    scopes: ScopeStack,
     stack_top: usize,
     asm_out: Vec<asm::Stmt>,
     label_count: HashMap<String, usize>,
@@ -19,7 +72,7 @@ struct CodeGen<'env> {
 impl<'env> CodeGen<'env> {
     pub fn new(env: &'env HandleMap<&'env str>) -> CodeGen<'env> {
         CodeGen {
-            bindings: HashMap::new(),
+            scopes: ScopeStack::new(),
             stack_top: 0,
             asm_out: Vec::new(),
             label_count: HashMap::new(),
@@ -35,7 +88,8 @@ impl<'env> CodeGen<'env> {
     fn emit(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::LetBinding(ident, expr) => {
-                self.bindings.insert(ident.clone(), self.stack_top);
+                self.scopes.add_binding(ident.clone());
+                // self.bindings.insert(ident.clone(), self.stack_top);
                 debug!(
                     "let binding: {} {}",
                     self.env.get(*ident).unwrap(),
@@ -66,9 +120,13 @@ impl<'env> CodeGen<'env> {
                 self.asm_out.push(asm::Stmt::Label(end_label));
             }
             Stmt::Block(stmts) => {
+                self.scopes.push();
                 for s in stmts {
                     self.emit(s);
                 }
+                let num_pop = self.scopes.pop();
+                self.asm_out.push(asm::Stmt::Pop(num_pop as i64));
+                debug!("scope exit: {}", num_pop);
             }
             Stmt::Print(exprs) => {
                 for e in exprs {
@@ -82,8 +140,7 @@ impl<'env> CodeGen<'env> {
         match expr {
             Expr::Number(v) => self.asm_out.push(asm::Stmt::PushInline(*v)),
             Expr::EnvLoad(ident) => {
-                if let Some(pos) = self.bindings.get(ident) {
-                    let offs = self.stack_top - pos - 1;
+                if let Some(offs) = self.scopes.resolve(ident) {
                     self.asm_out.push(asm::Stmt::PushStack(offs as i64));
                 } else {
                     panic!("unknown binding: {}", self.env.get(*ident).unwrap());

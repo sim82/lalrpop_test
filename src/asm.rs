@@ -116,6 +116,7 @@ impl BytecodeEmit for Stmt {
             }
             Stmt::Arith(op) => out.push(Op::Arith(op.clone())),
             Stmt::Output(channel) => out.push(Op::Output(*channel as u16)),
+            Stmt::Pop(n) if *n == 0 => (), // the compiler will just stupidly emit 'pop 0' in some cases
             Stmt::Pop(n) if *n == 1 => out.push(Op::Pop(PopMode::One)),
             Stmt::Pop(n) => {
                 if *n > 0x7FFF {
