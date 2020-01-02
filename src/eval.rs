@@ -43,8 +43,18 @@ impl Evaluator {
                     }
                 }
             } // Stmt::Expr(e) => {
-              //     self.eval(e);
-              // }
+            //     self.eval(e);
+            // }
+            Stmt::While(e, body) => loop {
+                loop {
+                    let v = self.eval(e.clone());
+                    if v == 0 {
+                        break;
+                    }
+                    self.execute(*body.clone());
+                }
+            },
+            Stmt::Assign(ident, expr, op) => panic!("not implemented"),
         }
     }
     fn eval(&mut self, expr: Expr) -> i64 {

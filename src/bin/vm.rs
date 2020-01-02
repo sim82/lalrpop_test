@@ -4,6 +4,7 @@ use std::sync::mpsc::channel;
 fn main() {
     let prog: Program = serde_yaml::from_reader(&mut std::io::stdin().lock()).unwrap();
     let mut vm = Vm::from_program(prog);
+    vm.max_ops = Some(1000);
 
     let (send, recv) = channel();
     let mut io_channels = IoChannels::new();

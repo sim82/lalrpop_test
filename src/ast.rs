@@ -1,11 +1,13 @@
 use handy::{Handle, HandleMap};
 use std::fmt::{Debug, Error, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     LetBinding(Ident, Expr),
+    Assign(Ident, Expr, Option<Opcode>),
     Print(Vec<Expr>),
     IfElse(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    While(Expr, Box<Stmt>),
     Block(Vec<Stmt>),
 }
 
@@ -26,6 +28,7 @@ impl<T: Eq> HandleMapDedup<T> for HandleMap<T> {
 pub type Ident = Handle;
 
 // #[derive(Debug)]
+#[derive(Clone)]
 pub enum Expr {
     Number(i64),
     EnvLoad(Ident),

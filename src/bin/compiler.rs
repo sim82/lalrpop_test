@@ -98,6 +98,16 @@ impl<'env> CodeGen<'env> {
                 self.emit_expr(expr);
                 self.stack_top += 1;
             }
+            Stmt::Assign(ident, expr, op) => {
+                assert!(op.is_none());
+                if let Some(offs) = self.scopes.resolve(ident) {
+                    self.emit_expr(expr);
+                    // self.asm_out.push(asm::Stmt::PushInline(offs as i64));
+                    self.asm_out.push(asm::Stmt::Move(offs as i64));
+                } else {
+                    panic!("unknown binding: {}", self.env.get(*ident).unwrap());
+                }
+            }
             Stmt::IfElse(expr, if_stmt, None) => {
                 self.emit_expr(expr);
                 let label = self.alloc_label("if_end");
@@ -118,6 +128,18 @@ impl<'env> CodeGen<'env> {
                 self.asm_out.push(asm::Stmt::Label(else_label));
                 self.emit(else_stmt);
                 self.asm_out.push(asm::Stmt::Label(end_label));
+            }
+            Stmt::While(expr, body) => {
+                let start_label = self.alloc_label("while");
+                self.asm_out.push(asm::Stmt::Label(start_label.clone()));
+                self.emit_expr(expr);
+                let exit_label = self.alloc_label("while_end");
+                self.asm_out
+                    .push(asm::Stmt::Jmp(asm::Cond::Zero, exit_label.clone()));
+                self.emit(body);
+                self.asm_out
+                    .push(asm::Stmt::Jmp(asm::Cond::Always, start_label));
+                self.asm_out.push(asm::Stmt::Label(exit_label));
             }
             Stmt::Block(stmts) => {
                 self.scopes.push();

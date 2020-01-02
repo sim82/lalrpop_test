@@ -38,6 +38,7 @@ pub enum Stmt {
     Arith(ArithOp),
     Output(i64),
     Pop(i64),
+    Move(i64),
     Label(String),
     Noop,
 }
@@ -68,6 +69,7 @@ impl Disass for Stmt {
             Stmt::Output(channel) => writeln!(out, "    output #{}", channel),
             Stmt::Pop(num) if *num == 1 => writeln!(out, "    pop"),
             Stmt::Pop(num) => writeln!(out, "    pop {}", num),
+            Stmt::Move(offs) => writeln!(out, "    move {}", offs),
             Stmt::Noop => writeln!(out, "    noop"),
             Stmt::Label(label) => writeln!(out, "{}:", label),
         }
@@ -90,8 +92,10 @@ impl BytecodeEmit for Stmt {
             | Stmt::Arith(_)
             | Stmt::Output(_)
             | Stmt::Noop => 1,
+            Stmt::Pop(n) if *n == 0 => 0,
             Stmt::Pop(n) if *n == 1 => 1,
             Stmt::Jmp(_, _) | Stmt::Pop(_) => 2,
+            Stmt::Move(_) => 2,
         }
     }
     fn emit(&self, labels: &HashMap<String, usize>, consts: &Vec<i64>, out: &mut Vec<Op>) {
@@ -124,6 +128,13 @@ impl BytecodeEmit for Stmt {
                 }
                 out.push(Op::PushImmediate(*n as i16));
                 out.push(Op::Pop(PopMode::Top));
+            }
+            Stmt::Move(offs) => {
+                if *offs > 0x7FFF {
+                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit / const push
+                }
+                out.push(Op::PushImmediate(*offs as i16));
+                out.push(Op::Move);
             }
             Stmt::Label(_) => (),
             Stmt::Noop => out.push(Op::Noop),

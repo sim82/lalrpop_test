@@ -86,6 +86,7 @@ pub enum Op {
     PushStack(i16),
     PushImmediate(i16),
     PushImmediate24(Uint24),
+    Move,
     Arith(ArithOp),
     Jmp(Cond),
     Output(u16),
@@ -113,6 +114,7 @@ pub struct Vm {
     pub code: Vec<Op>,
     ip: usize,
     pub num_ops: usize,
+    pub max_ops: Option<usize>,
 }
 pub struct IoChannels {
     pub channels: Vec<Sender<i64>>,
@@ -132,6 +134,7 @@ impl Vm {
             code: Vec::new(),
             ip: 0,
             num_ops: 0,
+            max_ops: None,
         }
     }
     pub fn from_program(prog: Program) -> Self {
@@ -141,6 +144,7 @@ impl Vm {
             code: prog.code,
             ip: 0,
             num_ops: 0,
+            max_ops: None,
         }
     }
     pub fn push(&mut self, v: i64) {
@@ -161,10 +165,23 @@ impl Vm {
         }
         panic!("stack underflow: {} (of {})", offs, self.stack.len());
     }
+    pub fn peek_at_mut(&mut self, offs: i64) -> &mut i64 {
+        if offs >= 0 && (offs as usize) < self.stack.len() {
+            let top = self.stack.len() - 1;
+            return self.stack.get_mut(top - offs as usize).unwrap();
+        }
+        panic!("stack underflow: {} (of {})", offs, self.stack.len());
+    }
     pub fn exec(&mut self, io: Option<&IoChannels>) {
         while self.ip < self.code.len() {
             let op = self.code[self.ip].clone();
             self.num_ops += 1;
+            if let Some(max_ops) = self.max_ops {
+                if self.num_ops > max_ops {
+                    debug!("max ops reached: {}", max_ops);
+                    break;
+                }
+            }
             debug!("exec: {} {:?}", self.ip, op);
             match op {
                 Op::PushConst(offs) => {
@@ -217,6 +234,11 @@ impl Vm {
                     for _ in 0..n {
                         self.pop();
                     }
+                }
+                Op::Move => {
+                    let offs = self.pop();
+                    let v = self.pop();
+                    *self.peek_at_mut(offs) = v;
                 }
                 Op::Noop => (),
                 Op::Break => {

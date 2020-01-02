@@ -20,6 +20,7 @@ Stmt = {
     ArithStmt,
     OutputStmt,
     PopStmt,
+    MoveStmt,
     Label => Stmt::Label(<>),
     NoopStmt,
 }
@@ -43,13 +44,16 @@ ArithStmt : Stmt = {
     "neq" => Stmt::Arith(ArithOp::NotEqual),
     "lt" => Stmt::Arith(ArithOp::LessThan),
     "le" => Stmt::Arith(ArithOp::LessEqual),
-    
 }
 
 OutputStmt : Stmt = "output" "#"? <NumDec> => Stmt::Output(<>); // allow optional '#' simply because IO channels are so 60s...  
 PopStmt : Stmt = {
     "pop" => Stmt::Pop(1),
     "pop" <Num> => Stmt::Pop(<>),
+}
+
+MoveStmt: Stmt = {
+    "move" <Num> => Stmt::Move(<>),
 }
 
 NoopStmt : Stmt = "noop" => Stmt::Noop;
