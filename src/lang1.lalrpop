@@ -1,15 +1,18 @@
 //use std::str::FromStr;
-use crate::{ast::{Expr, Opcode, Ident, Stmt, HandleMapDedup}, parser::binop, };
+use crate::{ast::{Expr, Opcode, Ident, Stmt, HandleMapDedup, Toplevel, Declaration}, parser::binop, };
 use lalrpop_util::ErrorRecovery;
 
 //grammar;
 grammar<'err>(env: &mut dyn HandleMapDedup<&'input str>, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
-pub Program = Stmt*;
+pub Program = Toplevel*;
 
-//Line = {
-//    <Stmt>
-//}
+Toplevel : Toplevel = {
+    Stmt => Toplevel::Stmt(<>),
+    Declaration => Toplevel::Declaration(<>),
+}
+
+Declaration : Declaration = "fn" <Ident> "(" <Comma<Ident>> ")" <BlockStmt> => Declaration::Function(<>);
 
 Stmt : Stmt = {
     <InlineStmt> ";",

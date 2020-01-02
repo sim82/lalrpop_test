@@ -1,7 +1,7 @@
 use handy::HandleMap;
 use lalrpop_test::{
     asm::{self, Disass},
-    ast::{Expr, Ident, Opcode, Stmt},
+    ast::{Declaration, Expr, Ident, Opcode, Stmt, Toplevel},
     lang1,
 };
 use log::debug;
@@ -210,9 +210,21 @@ fn main() {
         .parse(&mut env, &mut errors, &code[..])
         .unwrap();
 
+    let mut stmts = Vec::new();
+    let mut decls = Vec::new();
+    for p in program {
+        match p {
+            Toplevel::Stmt(s) => stmts.push(s),
+            Toplevel::Declaration(d) => decls.push(d),
+        }
+    }
+
     let mut codegen = CodeGen::new(&env);
-    for s in &program {
+    for s in &stmts {
         codegen.emit(s);
+    }
+    for d in &decls {
+        println!("decl: {:?}", d);
     }
     asm::Section::Data(Vec::new()).print_lines(&mut std::io::stdout().lock());
     asm::Section::Code(codegen.asm_out).print_lines(&mut std::io::stdout().lock());

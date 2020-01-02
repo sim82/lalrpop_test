@@ -2,6 +2,17 @@ use handy::{Handle, HandleMap};
 use std::fmt::{Debug, Error, Formatter};
 
 #[derive(Debug, Clone)]
+pub enum Toplevel {
+    Stmt(Stmt),
+    Declaration(Declaration),
+}
+
+#[derive(Debug, Clone)]
+pub enum Declaration {
+    Function(Ident, Vec<Ident>, Stmt),
+}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
     LetBinding(Ident, Expr),
     Assign(Ident, Expr, Option<Opcode>),
