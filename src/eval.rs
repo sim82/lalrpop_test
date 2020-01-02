@@ -48,6 +48,13 @@ impl Evaluator {
         }
     }
     fn eval(&mut self, expr: Expr) -> i64 {
+        fn bool_to_i64(v: bool) -> i64 {
+            if v {
+                1
+            } else {
+                0
+            }
+        }
         match expr {
             Expr::Number(v) => v,
             Expr::EnvLoad(ident) => match self.env.get(&ident) {
@@ -59,6 +66,14 @@ impl Evaluator {
                 Opcode::Sub => self.eval(*a) - self.eval(*b),
                 Opcode::Mul => self.eval(*a) * self.eval(*b),
                 Opcode::Div => self.eval(*a) / self.eval(*b),
+                Opcode::Or => bool_to_i64(self.eval(*a) != 0 || self.eval(*b) != 0),
+                Opcode::And => bool_to_i64(self.eval(*a) != 0 && self.eval(*b) != 0),
+                Opcode::Equal => bool_to_i64(self.eval(*a) == self.eval(*b)),
+                Opcode::NotEqual => bool_to_i64(self.eval(*a) != self.eval(*b)),
+                Opcode::LessThan => bool_to_i64(self.eval(*a) < self.eval(*b)),
+                Opcode::LessEqual => bool_to_i64(self.eval(*a) <= self.eval(*b)),
+                Opcode::GreaterThan => bool_to_i64(self.eval(*a) > self.eval(*b)),
+                Opcode::GreaterEqual => bool_to_i64(self.eval(*a) >= self.eval(*b)),
             },
             Expr::Error => 666,
         }

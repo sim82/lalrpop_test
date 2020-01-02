@@ -33,20 +33,38 @@ PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
 //ExprStmt : Stmt = <Expr> => Stmt::Expr(<>);
 pub Exprs = Comma<Expr>; // (0)
 
-Tier<Op,NextTier>: Expr = {
-    Tier<Op,NextTier> Op NextTier => binop(<>),
-    NextTier
-}; 
 
-Expr = Tier<ExprOp, Factor>;
-Factor = Tier<FactorOp, Term>;
+Expr = Tier<OrOp, AndExpr>;
+OrOp: Opcode = "or" => Opcode::Or;
 
-ExprOp: Opcode = { // (3)
+AndExpr = Tier<AndOp, CmpExpr>;
+AndOp: Opcode = "and" => Opcode::And;
+
+//NotExpr: Expr = {
+//    "not" <expr:NotExpr> => unop(UnOp::Not, expr),
+//    CmpExpr,
+//};
+
+CmpOp: Opcode = {
+    "==" => Opcode::Equal,
+    "!=" => Opcode::NotEqual,
+    "<" => Opcode::LessThan,
+    "<=" => Opcode::LessEqual,
+    ">" => Opcode::GreaterThan,
+    ">=" => Opcode::GreaterEqual,
+};
+
+CmpExpr = Tier<CmpOp, AddExpr>;
+
+AddExpr = Tier<AddOp, MulExpr>;
+MulExpr = Tier<MulOp, Term>;
+
+AddOp: Opcode = { // (3)
     "+" => Opcode::Add,
     "-" => Opcode::Sub,
 };
 
-FactorOp: Opcode = {
+MulOp: Opcode = {
     "*" => Opcode::Mul,
     "/" => Opcode::Div,
 };
@@ -88,3 +106,9 @@ Comma<T>: Vec<T> = { // (1)
         }
     }
 };
+
+Tier<Op,NextTier>: Expr = {
+    Tier<Op,NextTier> Op NextTier => binop(<>),
+    NextTier
+}; 
+

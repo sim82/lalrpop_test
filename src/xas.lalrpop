@@ -37,6 +37,13 @@ ArithStmt : Stmt = {
     "sub" => Stmt::Arith(ArithOp::Sub),
     "mul" => Stmt::Arith(ArithOp::Mul),
     "div" => Stmt::Arith(ArithOp::Div),
+    "or" => Stmt::Arith(ArithOp::Or),
+    "and" => Stmt::Arith(ArithOp::And),
+    "eq" => Stmt::Arith(ArithOp::Equal),
+    "neq" => Stmt::Arith(ArithOp::NotEqual),
+    "lt" => Stmt::Arith(ArithOp::LessThan),
+    "le" => Stmt::Arith(ArithOp::LessEqual),
+    
 }
 
 OutputStmt : Stmt = "output" "#"? <NumDec> => Stmt::Output(<>); // allow optional '#' simply because IO channels are so 60s...  

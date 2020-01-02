@@ -1,8 +1,11 @@
 use lalrpop_test::{
     asm::{extract_constants, label_locations, xas, BytecodeEmit, Section},
-    bytecode::{IoChannels, Op, Vm},
+    bytecode::{IoChannels, Op, Program, Vm},
 };
-use std::{io::Read, sync::mpsc::channel};
+use std::{
+    io::{Read, Write},
+    sync::mpsc::channel,
+};
 
 fn main() {
     env_logger::init();
@@ -15,32 +18,18 @@ fn main() {
         let mut data = data.clone();
         let labels = label_locations(stmts);
         extract_constants(stmts, &mut data);
-        let mut bc = Vec::new();
+        let mut code = Vec::new();
         for stmt in stmts {
-            stmt.emit(&labels, &data, &mut bc);
+            stmt.emit(&labels, &data, &mut code);
         }
-        bc.push(Op::Noop);
+        code.push(Op::Noop);
 
-        let mut vm = Vm::new();
-        vm.data = data.clone();
-        vm.code = bc;
-        println!("data: {:?}", vm.data);
-        println!("code: {:?}", vm.code);
-
-        let (send, recv) = channel();
-        let mut io_channels = IoChannels::new();
-        io_channels.channels.push(send);
-        vm.exec(Some(&io_channels));
-        let mut num_out = 0;
-        loop {
-            if let Ok(v) = recv.try_recv() {
-                println!("out: {}", v);
-                num_out += 1;
-            } else {
-                break;
-            }
-        }
-        println!("num output: {}", num_out);
-        println!("num ops: {}", vm.num_ops);
+        // let mut vm = Vm::new();
+        // vm.data = data.clone();
+        // vm.code = bc;
+        // println!("data: {:?}", vm.data);
+        // println!("code: {:?}", vm.code);
+        let prog = Program { data, code };
+        serde_yaml::to_writer(&mut std::io::stdout().lock(), &prog).unwrap();
     }
 }

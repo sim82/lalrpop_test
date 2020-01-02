@@ -90,14 +90,27 @@ impl<'env> CodeGen<'env> {
                 }
             }
             Expr::Op(a, op, b) => {
-                self.emit_expr(a);
-                self.emit_expr(b);
-
+                match op {
+                    Opcode::GreaterThan | Opcode::GreaterEqual => {
+                        self.emit_expr(b);
+                        self.emit_expr(a);
+                    }
+                    _ => {
+                        self.emit_expr(a);
+                        self.emit_expr(b);
+                    }
+                }
                 let op = match op {
                     Opcode::Add => asm::ArithOp::Add,
                     Opcode::Sub => asm::ArithOp::Sub,
                     Opcode::Mul => asm::ArithOp::Mul,
                     Opcode::Div => asm::ArithOp::Div,
+                    Opcode::Or => asm::ArithOp::Or,
+                    Opcode::And => asm::ArithOp::And,
+                    Opcode::Equal => asm::ArithOp::Equal,
+                    Opcode::NotEqual => asm::ArithOp::NotEqual,
+                    Opcode::LessThan | Opcode::GreaterThan => asm::ArithOp::LessThan,
+                    Opcode::LessEqual | Opcode::GreaterEqual => asm::ArithOp::LessEqual,
                 };
                 self.asm_out.push(asm::Stmt::Arith(op));
             }

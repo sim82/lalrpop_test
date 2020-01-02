@@ -39,6 +39,14 @@ pub enum Opcode {
     Div,
     Add,
     Sub,
+    Or,
+    And,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
 }
 
 impl Debug for Expr {
@@ -61,6 +69,14 @@ impl Debug for Opcode {
             Div => write!(fmt, "/"),
             Add => write!(fmt, "+"),
             Sub => write!(fmt, "-"),
+            Or => write!(fmt, "or"),
+            And => write!(fmt, "and"),
+            Equal => write!(fmt, "=="),
+            NotEqual => write!(fmt, "!="),
+            LessThan => write!(fmt, "<"),
+            LessEqual => write!(fmt, "<="),
+            GreaterThan => write!(fmt, ">"),
+            GreaterEqual => write!(fmt, ">="),
         }
     }
 }

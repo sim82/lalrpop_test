@@ -27,6 +27,20 @@ pub enum ArithOp {
     Sub,
     Mul,
     Div,
+    Or,
+    And,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessEqual,
+}
+
+fn bool_to_i64(v: bool) -> i64 {
+    if v {
+        1
+    } else {
+        0
+    }
 }
 
 impl ArithOp {
@@ -36,6 +50,12 @@ impl ArithOp {
             ArithOp::Sub => a - b,
             ArithOp::Mul => a * b,
             ArithOp::Div => a / b,
+            ArithOp::Or => bool_to_i64(a != 0 || b != 0),
+            ArithOp::And => bool_to_i64(a != 0 && b != 0),
+            ArithOp::Equal => bool_to_i64(a == b),
+            ArithOp::NotEqual => bool_to_i64(a != b),
+            ArithOp::LessThan => bool_to_i64(a < b),
+            ArithOp::LessEqual => bool_to_i64(a <= b),
         }
     }
 }
@@ -74,6 +94,19 @@ pub enum Op {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct Program {
+    pub data: Vec<i64>,
+    pub code: Vec<Op>,
+}
+impl Program {
+    pub fn new() -> Self {
+        Program {
+            data: Vec::new(),
+            code: Vec::new(),
+        }
+    }
+}
+
 pub struct Vm {
     pub data: Vec<i64>,
     stack: Vec<i64>,
@@ -97,6 +130,15 @@ impl Vm {
             data: Vec::new(),
             stack: Vec::new(),
             code: Vec::new(),
+            ip: 0,
+            num_ops: 0,
+        }
+    }
+    pub fn from_program(prog: Program) -> Self {
+        Vm {
+            data: prog.data,
+            stack: Vec::new(),
+            code: prog.code,
             ip: 0,
             num_ops: 0,
         }
@@ -194,28 +236,32 @@ mod tests {
     use std::sync::mpsc::channel;
     #[test]
     fn arith() {
-        let mut vm = Vm::new();
-        vm.data.push(123);
-        vm.data.push(666);
-        vm.data.push(777);
+        let mut prog = Program::new();
+        prog.data.push(123);
+        prog.data.push(666);
+        prog.data.push(777);
 
-        vm.code.push(Op::PushConst(0));
-        vm.code.push(Op::PushConst(1));
-        // vm.code.push(Op::Add);
-        vm.code.push(Op::Arith(ArithOp::Add));
+        prog.code.push(Op::PushConst(0));
+        prog.code.push(Op::PushConst(1));
+        // prog.code.push(Op::Add);
+        prog.code.push(Op::Arith(ArithOp::Add));
 
-        vm.code.push(Op::PushConst(1));
-        // vm.code.push(Op::PushConst(2));
-        // vm.code.push(Op::PushImmediate24(0xaabbcc.into()));
-        vm.code.push(Op::PushImmediate(1666));
+        prog.code.push(Op::PushConst(1));
+        // prog.code.push(Op::PushConst(2));
+        // prog.code.push(Op::PushImmediate24(0xaabbcc.into()));
+        prog.code.push(Op::PushImmediate(1666));
 
-        // vm.code.push(Op::Sub);
-        vm.code.push(Op::Arith(ArithOp::Sub));
-        vm.code.push(Op::Output(0));
-        vm.code.push(Op::Output(0));
+        // prog.code.push(Op::Sub);
+        prog.code.push(Op::Arith(ArithOp::Sub));
+        prog.code.push(Op::Output(0));
+        prog.code.push(Op::Output(0));
+        println!("{}", serde_yaml::to_string(&prog).unwrap());
+        let bin = bincode::serialize(&prog.code).unwrap();
+        println!("{} {:?}", bin.len(), bin);
         let (sender, receiver) = channel();
         let mut io = IoChannels::new();
         io.channels.push(sender);
+        let mut vm = Vm::from_program(prog);
         vm.exec(Some(&io));
         println!(
             "sub: {} add: {}",
@@ -225,9 +271,6 @@ mod tests {
         // println!("sub: {}", vm.pop());
         // println!("add: {}", vm.pop());
 
-        println!("{}", serde_yaml::to_string(&vm).unwrap());
-        let bin = bincode::serialize(&vm.code).unwrap();
-        println!("{} {:?}", bin.len(), bin);
         println!("{}", std::mem::size_of::<Op>());
 
         assert_eq!(std::mem::size_of::<Op>(), std::mem::size_of::<u32>());
@@ -242,24 +285,168 @@ mod tests {
     }
 
     #[test]
+    fn arith_ops() {
+        let mut prog = Program::new();
+
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::Add));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::Arith(ArithOp::Sub));
+
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::PushImmediate(4));
+        prog.code.push(Op::Arith(ArithOp::Mul));
+
+        prog.code.push(Op::PushImmediate(6));
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::Arith(ArithOp::Div));
+
+        let mut vm = Vm::from_program(prog);
+        vm.exec(None);
+
+        assert_eq!(vm.pop(), 2);
+        assert_eq!(vm.pop(), 12);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 3);
+    }
+    #[test]
+    fn arith_eq() {
+        let mut prog = Program::new();
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::Arith(ArithOp::Equal));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::Equal));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::Arith(ArithOp::NotEqual));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::NotEqual));
+
+        let mut vm = Vm::from_program(prog);
+        vm.exec(None);
+
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 0);
+    }
+    #[test]
+    fn arith_rel() {
+        let mut prog = Program::new();
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::Arith(ArithOp::LessThan));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::LessThan));
+
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::LessThan));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::Arith(ArithOp::LessEqual));
+
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::LessEqual));
+
+        prog.code.push(Op::PushImmediate(3));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Arith(ArithOp::LessEqual));
+
+        let mut vm = Vm::from_program(prog);
+        vm.exec(None);
+
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 1);
+    }
+    #[test]
+    fn arith_bool() {
+        let mut prog = Program::new();
+
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::Arith(ArithOp::And));
+
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::Arith(ArithOp::And));
+
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::Arith(ArithOp::And));
+
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::Arith(ArithOp::And));
+
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::Arith(ArithOp::Or));
+
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::Arith(ArithOp::Or));
+
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::Arith(ArithOp::Or));
+
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::Arith(ArithOp::Or));
+
+        let mut vm = Vm::from_program(prog);
+        vm.exec(None);
+
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 0);
+
+        assert_eq!(vm.pop(), 1);
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 0);
+        assert_eq!(vm.pop(), 0);
+    }
+    #[test]
     fn jump() {
         env_logger::init();
         info!("log");
-        let mut vm = Vm::new();
-        vm.data.push(123);
-        vm.data.push(666);
-        vm.data.push(777);
+        let mut prog = Program::new();
+        prog.data.push(123);
+        prog.data.push(666);
+        prog.data.push(777);
 
-        vm.code.push(Op::PushImmediate(1));
-        vm.code.push(Op::PushImmediate(4));
-        vm.code.push(Op::Jmp(Cond::NonZero));
-        vm.code.push(Op::PushConst(2));
-        vm.code.push(Op::PushImmediate(2));
-        vm.code.push(Op::Jmp(Cond::Always));
-        vm.code.push(Op::PushConst(1));
-        vm.code.push(Op::Noop);
-        println!("{}", serde_yaml::to_string(&vm).unwrap());
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushImmediate(4));
+        prog.code.push(Op::Jmp(Cond::NonZero));
+        prog.code.push(Op::PushConst(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::Jmp(Cond::Always));
+        prog.code.push(Op::PushConst(1));
+        prog.code.push(Op::Noop);
+        println!("{}", serde_yaml::to_string(&prog).unwrap());
 
+        let mut vm = Vm::from_program(prog);
         vm.exec(None);
         println!("{}", vm.pop());
     }
