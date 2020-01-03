@@ -20,6 +20,7 @@ pub enum Stmt {
     IfElse(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Block(Vec<Stmt>),
+    Call(Ident, Vec<Expr>),
 }
 
 pub trait HandleMapDedup<T: Eq> {

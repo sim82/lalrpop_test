@@ -21,6 +21,7 @@ Stmt = {
     OutputStmt,
     PopStmt,
     MoveStmt,
+    CallStmt,
     Label => Stmt::Label(<>),
     NoopStmt,
 }
@@ -31,8 +32,10 @@ PushStmt : Stmt = {
     "push" <StackRef> => Stmt::PushStack(<>),
 }
 
-JmpStmt : Stmt = "jmp" <Condition> <Ident> => Stmt::Jmp(<>);
-
+JmpStmt : Stmt = {
+    "jmps" <cond:Condition> => Stmt::Jmp(cond,None),
+    "jmp" <cond:Condition> <label:Ident> => Stmt::Jmp(cond,Some(label)),
+}
 ArithStmt : Stmt = {
     "add" => Stmt::Arith(ArithOp::Add),
     "sub" => Stmt::Arith(ArithOp::Sub),
@@ -54,6 +57,9 @@ PopStmt : Stmt = {
 
 MoveStmt: Stmt = {
     "move" <Num> => Stmt::Move(<>),
+}
+CallStmt: Stmt = {
+    "call" <Ident> => Stmt::Call(<>),
 }
 
 NoopStmt : Stmt = "noop" => Stmt::Noop;

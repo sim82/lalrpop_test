@@ -84,6 +84,7 @@ pub enum Op {
     Noop,
     PushConst,
     PushStack,
+    PushIp,
     PushImmediate(i16),
     PushImmediate24(Uint24),
     Move,
@@ -204,6 +205,7 @@ impl Vm {
                     let v: u32 = v.into();
                     self.push(v as i64)
                 }
+                Op::PushIp => self.push(self.ip as i64),
                 Op::Jmp(jmp_cond) => {
                     let dst = self.pop();
                     let cond = match jmp_cond {

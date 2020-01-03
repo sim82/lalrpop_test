@@ -27,6 +27,7 @@ InlineStmt = {
     <LetBindingStmt>,
     <PrintStmt>,
     <AssignStmt>,
+    <CallStmt>,
 }
 
 IfStmt: Stmt = "if" <expr:Expr> <if_body:BlockStmt> <else_body:("else" <Stmt>)?> => match else_body {
@@ -36,6 +37,7 @@ IfStmt: Stmt = "if" <expr:Expr> <if_body:BlockStmt> <else_body:("else" <Stmt>)?>
 BlockStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>);
 LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr);
 AssignStmt: Stmt = <name:Ident> "=" <expr:Expr> => Stmt::Assign(name, expr, None);
+CallStmt: Stmt = <name:Ident> "(" <exprs:Exprs> ")" => Stmt::Call(name, exprs);
 PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
 WhileStmt: Stmt = "while" <expr:Expr> <body:BlockStmt> => Stmt::While(expr, Box::new(body));
 //ExprStmt : Stmt = <Expr> => Stmt::Expr(<>);

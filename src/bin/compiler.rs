@@ -49,6 +49,10 @@ impl ScopeStack {
         frame.bindings.insert(ident, frame.stack_top);
         frame.stack_top += 1;
     }
+    fn push_pseudo(&mut self) {
+        let frame = self.frames.last_mut().unwrap();
+        frame.stack_top += 1;
+    }
     fn resolve(&self, ident: &Ident) -> Option<usize> {
         let top = self.frames.last().unwrap().stack_top;
         for frame in self.frames.iter().rev() {
@@ -63,7 +67,6 @@ impl ScopeStack {
 
 struct CodeGen<'env> {
     scopes: ScopeStack,
-    stack_top: usize,
     asm_out: Vec<asm::Stmt>,
     label_count: HashMap<String, usize>,
     env: &'env HandleMap<&'env str>,
@@ -73,7 +76,6 @@ impl<'env> CodeGen<'env> {
     pub fn new(env: &'env HandleMap<&'env str>) -> CodeGen<'env> {
         CodeGen {
             scopes: ScopeStack::new(),
-            stack_top: 0,
             asm_out: Vec::new(),
             label_count: HashMap::new(),
             env,
@@ -90,13 +92,7 @@ impl<'env> CodeGen<'env> {
             Stmt::LetBinding(ident, expr) => {
                 self.scopes.add_binding(ident.clone());
                 // self.bindings.insert(ident.clone(), self.stack_top);
-                debug!(
-                    "let binding: {} {}",
-                    self.env.get(*ident).unwrap(),
-                    self.stack_top
-                );
                 self.emit_expr(expr);
-                self.stack_top += 1;
             }
             Stmt::Assign(ident, expr, op) => {
                 assert!(op.is_none());
@@ -112,7 +108,7 @@ impl<'env> CodeGen<'env> {
                 self.emit_expr(expr);
                 let label = self.alloc_label("if_end");
                 self.asm_out
-                    .push(asm::Stmt::Jmp(asm::Cond::Zero, label.clone()));
+                    .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(label.clone())));
                 self.emit(if_stmt);
                 self.asm_out.push(asm::Stmt::Label(label));
             }
@@ -120,11 +116,11 @@ impl<'env> CodeGen<'env> {
                 self.emit_expr(expr);
                 let else_label = self.alloc_label("else");
                 self.asm_out
-                    .push(asm::Stmt::Jmp(asm::Cond::Zero, else_label.clone()));
+                    .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(else_label.clone())));
                 self.emit(if_stmt);
                 let end_label = self.alloc_label("else_end");
                 self.asm_out
-                    .push(asm::Stmt::Jmp(asm::Cond::Always, end_label.clone()));
+                    .push(asm::Stmt::Jmp(asm::Cond::Always, Some(end_label.clone())));
                 self.asm_out.push(asm::Stmt::Label(else_label));
                 self.emit(else_stmt);
                 self.asm_out.push(asm::Stmt::Label(end_label));
@@ -135,10 +131,10 @@ impl<'env> CodeGen<'env> {
                 self.emit_expr(expr);
                 let exit_label = self.alloc_label("while_end");
                 self.asm_out
-                    .push(asm::Stmt::Jmp(asm::Cond::Zero, exit_label.clone()));
+                    .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(exit_label.clone())));
                 self.emit(body);
                 self.asm_out
-                    .push(asm::Stmt::Jmp(asm::Cond::Always, start_label));
+                    .push(asm::Stmt::Jmp(asm::Cond::Always, Some(start_label)));
                 self.asm_out.push(asm::Stmt::Label(exit_label));
             }
             Stmt::Block(stmts) => {
@@ -155,6 +151,14 @@ impl<'env> CodeGen<'env> {
                     self.emit_expr(e);
                     self.asm_out.push(asm::Stmt::Output(0));
                 }
+            }
+            Stmt::Call(name, exprs) => {
+                for e in exprs {
+                    self.emit_expr(e);
+                }
+                let name: String = format!("func_{}", *self.env.get(*name).unwrap());
+                self.asm_out.push(asm::Stmt::Call(name));
+                self.asm_out.push(asm::Stmt::Pop(exprs.len() as i64));
             }
         }
     }
@@ -196,6 +200,9 @@ impl<'env> CodeGen<'env> {
             Expr::Error => panic!("found Expr::Error in emit_expr"),
         }
     }
+    fn emit_return(&mut self) {
+        self.asm_out.push(asm::Stmt::Jmp(asm::Cond::Always, None));
+    }
 }
 
 fn main() {
@@ -220,12 +227,95 @@ fn main() {
     }
 
     let mut codegen = CodeGen::new(&env);
+
+    if !decls.is_empty() {
+        codegen
+            .asm_out
+            .push(asm::Stmt::Jmp(asm::Cond::Always, Some("entry".into())));
+    }
+
+    for d in &decls {
+        match d {
+            Declaration::Function(name, args, body) => {
+                codegen.asm_out.push(asm::Stmt::Label(format!(
+                    "func_{}",
+                    env.get(*name).unwrap()
+                )));
+                codegen.scopes.push();
+                for a in args {
+                    codegen.scopes.add_binding(a.clone());
+                }
+                codegen.scopes.push_pseudo(); // for return address
+                codegen.emit(body);
+                codegen.emit_return();
+                codegen.scopes.pop();
+            }
+        }
+    }
+    codegen.asm_out.push(asm::Stmt::Label("entry".into()));
     for s in &stmts {
         codegen.emit(s);
     }
-    for d in &decls {
-        println!("decl: {:?}", d);
-    }
+    // for d in &decls {
+    //     println!("decl: {:?}", d);
+    // }
     asm::Section::Data(Vec::new()).print_lines(&mut std::io::stdout().lock());
     asm::Section::Code(codegen.asm_out).print_lines(&mut std::io::stdout().lock());
+}
+
+#[cfg(test)]
+mod compiler_test {
+    use super::asm::{ArithOp, Cond, Stmt};
+    use super::lang1;
+    use super::{CodeGen, Toplevel};
+    use handy::HandleMap;
+    #[test]
+    fn test_basic() {
+        let code = include_str!("test_compiler_basic.l1");
+        let mut env = HandleMap::new();
+        let mut errors = Vec::new();
+        let program = lang1::ProgramParser::new()
+            .parse(&mut env, &mut errors, code)
+            .unwrap();
+
+        let mut codegen = CodeGen::new(&env);
+
+        for p in &program {
+            match p {
+                Toplevel::Stmt(s) => codegen.emit(s),
+                _ => (),
+                // Toplevel::Declaration(d) => decls.push(d),
+            }
+        }
+        println!("asm: {:?}", codegen.asm_out);
+        let asm_ref = [
+            // Stmt::Jmp(Cond::Always, Some("entry".into())),
+            // Stmt::Label("entry".into()),
+            Stmt::PushInline(123),
+            Stmt::PushInline(321),
+            Stmt::PushInline(432),
+            Stmt::PushStack(1),
+            Stmt::Output(0),
+            Stmt::Pop(2),
+            Stmt::PushStack(0),
+            Stmt::Output(0),
+            Stmt::Pop(0),
+            Stmt::PushStack(0),
+            Stmt::Output(0),
+            Stmt::Label("while0".into()),
+            Stmt::PushStack(0),
+            Stmt::PushInline(0),
+            Stmt::Arith(ArithOp::NotEqual),
+            Stmt::Jmp(Cond::Zero, Some("while_end0".into())),
+            Stmt::PushInline(1),
+            Stmt::PushStack(1),
+            Stmt::PushInline(1),
+            Stmt::Arith(ArithOp::Sub),
+            Stmt::Move(1),
+            Stmt::Pop(1),
+            Stmt::Jmp(Cond::Always, Some("while0".into())),
+            Stmt::Label("while_end0".into()),
+        ];
+        assert_eq!(codegen.asm_out[..], asm_ref);
+    }
 }

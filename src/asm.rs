@@ -30,12 +30,13 @@ impl Disass for Section {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Stmt {
     PushInline(i64),
     PushConst(i64),
     PushStack(i64),
-    Jmp(Cond, String),
+    Call(String),
+    Jmp(Cond, Option<String>),
     Arith(ArithOp),
     Output(i64),
     Pop(i64),
@@ -49,13 +50,17 @@ impl Disass for Stmt {
             Stmt::PushInline(v) => writeln!(out, "    push {}", v),
             Stmt::PushConst(v) => writeln!(out, "    push const.{}", v),
             Stmt::PushStack(v) => writeln!(out, "    push stack.{}", v),
+            Stmt::Call(label) => writeln!(out, "    call {}", label),
             Stmt::Jmp(cond, label) => {
                 let cond = match cond {
                     Cond::Always => "always",
                     Cond::NonZero => "nz",
                     Cond::Zero => "z",
                 };
-                writeln!(out, "    jmp {} {}", cond, label)
+                match label {
+                    Some(label) => writeln!(out, "    jmp {} {}", cond, label),
+                    None => writeln!(out, "    jmps {}", cond),
+                }
             }
             Stmt::Arith(ArithOp::Add) => writeln!(out, "    add"),
             Stmt::Arith(ArithOp::Sub) => writeln!(out, "    sub"),
@@ -90,10 +95,12 @@ impl BytecodeEmit for Stmt {
             Stmt::Arith(_) | Stmt::Output(_) | Stmt::Noop => 1,
             Stmt::PushInline(n) if *n <= 0xFFFFFF => 1,
             Stmt::PushInline(_) => 2,
+            Stmt::Call(_) => 5,
             Stmt::Pop(n) if *n == 0 => 0,
             Stmt::Pop(n) if *n == 1 => 1,
-            Stmt::Jmp(_, _) | Stmt::Pop(_) => 2,
             Stmt::Move(_) | Stmt::PushConst(_) | Stmt::PushStack(_) => 2,
+            Stmt::Jmp(_, Some(_)) | Stmt::Pop(_) => 2,
+            Stmt::Jmp(_, None) => 3,
         }
     }
     fn emit(&self, labels: &HashMap<String, usize>, consts: &Vec<i64>, out: &mut Vec<Op>) {
@@ -115,21 +122,46 @@ impl BytecodeEmit for Stmt {
             }
             Stmt::PushConst(i) => {
                 if *i > 0x7FFF {
-                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit
+                    panic!("TODO: push const n > 0x7FFF not implemented"); // support 24bit
                 }
                 out.push(Op::PushImmediate(*i as i16));
                 out.push(Op::PushConst);
             }
             Stmt::PushStack(i) => {
                 if *i > 0x7FFF {
-                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit
+                    panic!("TODO: push stack n > 0x7FFF not implemented"); // support 24bit
                 }
                 out.push(Op::PushImmediate(*i as i16));
                 out.push(Op::PushStack);
             }
-            Stmt::Jmp(cond, label) => {
+            Stmt::Call(label) => {
+                out.push(Op::PushIp);
+                out.push(Op::PushImmediate(5));
+                out.push(Op::Arith(ArithOp::Add));
+
                 let rel_addr = *labels.get(label).unwrap() as i64 - out.len() as i64;
+                if rel_addr > 0x7FFF {
+                    // FIXME: negative values!
+                    panic!("TODO: jmp n > 0x7FFF not implemented"); // support 24bit / const
+                }
                 out.push(Op::PushImmediate((rel_addr - 1) as i16));
+                out.push(Op::Jmp(Cond::Always));
+            }
+            Stmt::Jmp(cond, Some(label)) => {
+                let rel_addr = *labels.get(label).unwrap() as i64 - out.len() as i64;
+                if rel_addr > 0x7FFF {
+                    // FIXME: negative values!
+                    panic!("TODO: jmp n > 0x7FFF not implemented"); // support 24bit / const
+                }
+                out.push(Op::PushImmediate((rel_addr - 1) as i16));
+                out.push(Op::Jmp(cond.clone()));
+            }
+            Stmt::Jmp(cond, None) => {
+                if out.len() > 0x7FFF {
+                    panic!("TODO: jmp n > 0x7FFF not implemented"); // support 24bit / const
+                }
+                out.push(Op::PushImmediate(out.len() as i16 + 2));
+                out.push(Op::Arith(ArithOp::Sub));
                 out.push(Op::Jmp(cond.clone()));
             }
             Stmt::Arith(op) => out.push(Op::Arith(op.clone())),
@@ -211,50 +243,61 @@ fn asm_basic() {
 #[test]
 fn asm_labels() {
     let mut stmts = Vec::new();
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_const".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_const".into())));
     stmts.push(Stmt::PushConst(0));
     stmts.push(Stmt::Label("jmp_const".into()));
     stmts.push(Stmt::PushInline(123));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_stack".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_stack".into())));
     stmts.push(Stmt::PushStack(0));
     stmts.push(Stmt::Label("jmp_stack".into()));
     stmts.push(Stmt::PushInline(124));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_inline".into())));
     stmts.push(Stmt::PushInline(1));
     stmts.push(Stmt::Label("jmp_inline".into()));
     stmts.push(Stmt::PushInline(125));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline24".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_inline24".into())));
     stmts.push(Stmt::PushInline(0xFFFFF));
     stmts.push(Stmt::Label("jmp_inline24".into()));
     stmts.push(Stmt::PushInline(126));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline_?".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_inline_?".into())));
     stmts.push(Stmt::PushInline(0xFFFFFFF));
     stmts.push(Stmt::Label("jmp_inline_?".into()));
     stmts.push(Stmt::PushInline(127));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline_large".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_inline_large".into())));
     stmts.push(Stmt::PushInline(0xFFFFFFFFF));
     stmts.push(Stmt::Label("jmp_inline_large".into()));
     stmts.push(Stmt::PushInline(128));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_0".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_pop_0".into())));
     stmts.push(Stmt::Pop(0));
     stmts.push(Stmt::Label("jmp_pop_0".into()));
     stmts.push(Stmt::PushInline(129));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_top".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_pop_top".into())));
     stmts.push(Stmt::Pop(1));
     stmts.push(Stmt::Label("jmp_pop_top".into()));
     stmts.push(Stmt::PushInline(130));
 
-    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_large".into()));
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_pop_large".into())));
     stmts.push(Stmt::Pop(0x7FFF));
     stmts.push(Stmt::Label("jmp_pop_large".into()));
     stmts.push(Stmt::PushInline(131));
+
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_jmp_abs".into())));
+    stmts.push(Stmt::Jmp(Cond::Always, None));
+    stmts.push(Stmt::Label("jmp_jmp_abs".into()));
+    stmts.push(Stmt::PushInline(132));
+
+    stmts.push(Stmt::Jmp(Cond::Always, Some("jmp_call".into())));
+    stmts.push(Stmt::Label("func_unknown".into()));
+    stmts.push(Stmt::Call("func_unknown".into()));
+    stmts.push(Stmt::Label("jmp_call".into()));
+    stmts.push(Stmt::PushInline(133));
 
     let mut data = Vec::new();
     let labels = label_locations(&stmts);
@@ -267,6 +310,11 @@ fn asm_labels() {
         stmt.emit(&labels, &data, &mut bc);
     }
     bc.push(Op::Noop);
+    assert_eq!(bc[*labels.get("jmp_call").unwrap()], Op::PushImmediate(133));
+    assert_eq!(
+        bc[*labels.get("jmp_jmp_abs").unwrap()],
+        Op::PushImmediate(132)
+    );
     assert_eq!(
         bc[*labels.get("jmp_pop_large").unwrap()],
         Op::PushImmediate(131)

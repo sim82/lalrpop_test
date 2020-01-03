@@ -55,6 +55,7 @@ impl Evaluator {
                 }
             },
             Stmt::Assign(_, _, _) => panic!("not implemented"),
+            Stmt::Call(_, _) => panic!("not implemented"),
         }
     }
     fn eval(&mut self, expr: Expr) -> i64 {
