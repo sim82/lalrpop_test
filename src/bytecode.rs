@@ -82,8 +82,8 @@ pub enum Cond {
 #[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub enum Op {
     Noop,
-    PushConst(u16),
-    PushStack(i16),
+    PushConst,
+    PushStack,
     PushImmediate(i16),
     PushImmediate24(Uint24),
     Move,
@@ -184,10 +184,16 @@ impl Vm {
             }
             debug!("exec: {} {:?}", self.ip, op);
             match op {
-                Op::PushConst(offs) => {
+                Op::PushConst/*(offs)*/ => {
+                    let offs = self.pop();
                     self.push(self.data[offs as usize]);
+                    // self.push(self.data[offs as usize]);
                 }
-                Op::PushStack(offs) => self.push(self.peek_at(offs as i64)),
+                Op::PushStack/*(offs)*/ => {
+                    let offs = self.pop();
+                    self.push(self.peek_at(offs as i64))
+                
+                },
                 Op::Arith(op) => {
                     let b = self.pop();
                     let a = self.pop();
@@ -263,12 +269,15 @@ mod tests {
         prog.data.push(666);
         prog.data.push(777);
 
-        prog.code.push(Op::PushConst(0));
-        prog.code.push(Op::PushConst(1));
+        prog.code.push(Op::PushImmediate(0));
+        prog.code.push(Op::PushConst);
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushConst);
         // prog.code.push(Op::Add);
         prog.code.push(Op::Arith(ArithOp::Add));
 
-        prog.code.push(Op::PushConst(1));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushConst);
         // prog.code.push(Op::PushConst(2));
         // prog.code.push(Op::PushImmediate24(0xaabbcc.into()));
         prog.code.push(Op::PushImmediate(1666));
@@ -461,10 +470,12 @@ mod tests {
         prog.code.push(Op::PushImmediate(1));
         prog.code.push(Op::PushImmediate(4));
         prog.code.push(Op::Jmp(Cond::NonZero));
-        prog.code.push(Op::PushConst(2));
+        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushConst);
         prog.code.push(Op::PushImmediate(2));
         prog.code.push(Op::Jmp(Cond::Always));
-        prog.code.push(Op::PushConst(1));
+        prog.code.push(Op::PushImmediate(1));
+        prog.code.push(Op::PushConst);
         prog.code.push(Op::Noop);
         println!("{}", serde_yaml::to_string(&prog).unwrap());
 

@@ -1,4 +1,5 @@
 pub use crate::bytecode::{ArithOp, Cond, Op, PopMode};
+use log::debug;
 use std::collections::HashMap;
 
 pub trait Disass {
@@ -86,16 +87,13 @@ impl BytecodeEmit for Stmt {
     fn num_ops(&self) -> usize {
         match self {
             Stmt::Label(_) => 0,
-            Stmt::PushInline(_)
-            | Stmt::PushConst(_)
-            | Stmt::PushStack(_)
-            | Stmt::Arith(_)
-            | Stmt::Output(_)
-            | Stmt::Noop => 1,
+            Stmt::Arith(_) | Stmt::Output(_) | Stmt::Noop => 1,
+            Stmt::PushInline(n) if *n <= 0xFFFFFF => 1,
+            Stmt::PushInline(_) => 2,
             Stmt::Pop(n) if *n == 0 => 0,
             Stmt::Pop(n) if *n == 1 => 1,
             Stmt::Jmp(_, _) | Stmt::Pop(_) => 2,
-            Stmt::Move(_) => 2,
+            Stmt::Move(_) | Stmt::PushConst(_) | Stmt::PushStack(_) => 2,
         }
     }
     fn emit(&self, labels: &HashMap<String, usize>, consts: &Vec<i64>, out: &mut Vec<Op>) {
@@ -109,10 +107,26 @@ impl BytecodeEmit for Stmt {
                     .iter()
                     .position(|x| x == v)
                     .expect("missing const for large value");
-                out.push(Op::PushConst(i as u16))
+                if i > 0x7FFF {
+                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit
+                }
+                out.push(Op::PushImmediate(i as i16));
+                out.push(Op::PushConst);
             }
-            Stmt::PushConst(i) => out.push(Op::PushConst(*i as u16)),
-            Stmt::PushStack(i) => out.push(Op::PushStack(*i as i16)),
+            Stmt::PushConst(i) => {
+                if *i > 0x7FFF {
+                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit
+                }
+                out.push(Op::PushImmediate(*i as i16));
+                out.push(Op::PushConst);
+            }
+            Stmt::PushStack(i) => {
+                if *i > 0x7FFF {
+                    panic!("TODO: pop n > 0x7FFF not implemented"); // support 24bit
+                }
+                out.push(Op::PushImmediate(*i as i16));
+                out.push(Op::PushStack);
+            }
             Stmt::Jmp(cond, label) => {
                 let rel_addr = *labels.get(label).unwrap() as i64 - out.len() as i64;
                 out.push(Op::PushImmediate((rel_addr - 1) as i16));
@@ -149,6 +163,7 @@ pub fn label_locations(stmts: &Vec<Stmt>) -> HashMap<String, usize> {
         if let Stmt::Label(label) = stmt {
             labels.insert(label.clone(), ip);
         }
+        debug!("loc: {} {:?}", ip, stmt);
         ip += stmt.num_ops();
     }
     labels
