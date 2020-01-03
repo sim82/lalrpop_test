@@ -34,8 +34,11 @@ mod test {
         println!("{:?}", expr);
         println!("env: {:?}", env);
         let mut evaluator = Evaluator::new();
-        for s in expr {
-            evaluator.execute(s);
+        for s in expr.iter().filter_map(|x| match x {
+            crate::ast::Toplevel::Stmt(s) => Some(s),
+            _ => None,
+        }) {
+            evaluator.execute(s.clone());
         }
 
         let expr = lang1::ProgramParser::new()
@@ -45,9 +48,12 @@ mod test {
                 "let a = 41 + 1; if a {print 10 * 10;} else {print 123 * 0b101, a;}",
             )
             .unwrap();
-        for s in expr {
+        for s in expr.iter().filter_map(|x| match x {
+            crate::ast::Toplevel::Stmt(s) => Some(s),
+            _ => None,
+        }) {
             println!("execute: {:?}", s);
-            evaluator.execute(s);
+            evaluator.execute(s.clone());
         }
     }
 

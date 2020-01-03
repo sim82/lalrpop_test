@@ -207,3 +207,97 @@ fn asm_basic() {
         println!("bc: {:?}", bc);
     }
 }
+
+#[test]
+fn asm_labels() {
+    let mut stmts = Vec::new();
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_const".into()));
+    stmts.push(Stmt::PushConst(0));
+    stmts.push(Stmt::Label("jmp_const".into()));
+    stmts.push(Stmt::PushInline(123));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_stack".into()));
+    stmts.push(Stmt::PushStack(0));
+    stmts.push(Stmt::Label("jmp_stack".into()));
+    stmts.push(Stmt::PushInline(124));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline".into()));
+    stmts.push(Stmt::PushInline(1));
+    stmts.push(Stmt::Label("jmp_inline".into()));
+    stmts.push(Stmt::PushInline(125));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline24".into()));
+    stmts.push(Stmt::PushInline(0xFFFFF));
+    stmts.push(Stmt::Label("jmp_inline24".into()));
+    stmts.push(Stmt::PushInline(126));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline_?".into()));
+    stmts.push(Stmt::PushInline(0xFFFFFFF));
+    stmts.push(Stmt::Label("jmp_inline_?".into()));
+    stmts.push(Stmt::PushInline(127));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_inline_large".into()));
+    stmts.push(Stmt::PushInline(0xFFFFFFFFF));
+    stmts.push(Stmt::Label("jmp_inline_large".into()));
+    stmts.push(Stmt::PushInline(128));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_0".into()));
+    stmts.push(Stmt::Pop(0));
+    stmts.push(Stmt::Label("jmp_pop_0".into()));
+    stmts.push(Stmt::PushInline(129));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_top".into()));
+    stmts.push(Stmt::Pop(1));
+    stmts.push(Stmt::Label("jmp_pop_top".into()));
+    stmts.push(Stmt::PushInline(130));
+
+    stmts.push(Stmt::Jmp(Cond::Always, "jmp_pop_large".into()));
+    stmts.push(Stmt::Pop(0x7FFF));
+    stmts.push(Stmt::Label("jmp_pop_large".into()));
+    stmts.push(Stmt::PushInline(131));
+
+    let mut data = Vec::new();
+    let labels = label_locations(&stmts);
+
+    extract_constants(&stmts, &mut data);
+    // debug!("labels: {:?}", labels);
+    let mut bc = Vec::new();
+
+    for stmt in stmts {
+        stmt.emit(&labels, &data, &mut bc);
+    }
+    bc.push(Op::Noop);
+    assert_eq!(
+        bc[*labels.get("jmp_pop_large").unwrap()],
+        Op::PushImmediate(131)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_pop_top").unwrap()],
+        Op::PushImmediate(130)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_pop_0").unwrap()],
+        Op::PushImmediate(129)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_inline_large").unwrap()],
+        Op::PushImmediate(128)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_inline24").unwrap()],
+        Op::PushImmediate(126)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_inline").unwrap()],
+        Op::PushImmediate(125)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_stack").unwrap()],
+        Op::PushImmediate(124)
+    );
+    assert_eq!(
+        bc[*labels.get("jmp_const").unwrap()],
+        Op::PushImmediate(123)
+    );
+    // debug!("bc: {:?}", bc);
+}

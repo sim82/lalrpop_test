@@ -1,11 +1,8 @@
 use lalrpop_test::{
     asm::{extract_constants, label_locations, xas, BytecodeEmit, Section},
-    bytecode::{IoChannels, Op, Program, Vm},
+    bytecode::{Op, Program},
 };
-use std::{
-    io::{Read, Write},
-    sync::mpsc::channel,
-};
+use std::io::Read;
 
 fn main() {
     env_logger::init();

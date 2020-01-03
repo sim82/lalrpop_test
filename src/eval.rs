@@ -54,7 +54,7 @@ impl Evaluator {
                     self.execute(*body.clone());
                 }
             },
-            Stmt::Assign(ident, expr, op) => panic!("not implemented"),
+            Stmt::Assign(_, _, _) => panic!("not implemented"),
         }
     }
     fn eval(&mut self, expr: Expr) -> i64 {

@@ -2,7 +2,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::Sender;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
+#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq)]
 pub struct Uint24([u8; 3]);
 
 impl From<u32> for Uint24 {
@@ -21,7 +21,7 @@ impl Into<u32> for Uint24 {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+#[derive(Clone, Serialize, Deserialize, Debug, Copy, PartialEq)]
 pub enum ArithOp {
     Add,
     Sub,
@@ -66,20 +66,20 @@ impl ArithOp {
 //     Rel,
 // }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+#[derive(Clone, Serialize, Deserialize, Debug, Copy, PartialEq)]
 pub enum PopMode {
     One,
     Top,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+#[derive(Clone, Serialize, Deserialize, Debug, Copy, PartialEq)]
 pub enum Cond {
     Always,
     Zero,
     NonZero,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
+#[derive(Clone, Serialize, Deserialize, Debug, Copy, PartialEq)]
 pub enum Op {
     Noop,
     PushConst,
@@ -306,12 +306,12 @@ mod tests {
 
         assert_eq!(std::mem::size_of::<Op>(), std::mem::size_of::<u32>());
         unsafe {
-            let mut y = [Op::Arith(ArithOp::Add); 8]; // = vm.code[0..6];
+            let mut y = [Op::Arith(ArithOp::Add); 11]; // = vm.code[0..6];
                                                       // std::slice::bytes::copy_memory(&vm.code, &mut y);
                                                       // let x = std::mem::transmute::<[Op; 6], [u8; 6 * 4]>(y);
             y.clone_from_slice(&vm.code[..]);
-            let z: [u8; 8 * 4] = std::mem::transmute_copy(&y);
-            println!("z: {:?}", z);
+            let _z: [u8; 11 * 4] = std::mem::transmute_copy(&y);
+            // println!("z: {:?}", z);
         }
     }
 
@@ -468,11 +468,11 @@ mod tests {
         prog.data.push(777);
 
         prog.code.push(Op::PushImmediate(1));
-        prog.code.push(Op::PushImmediate(4));
+        prog.code.push(Op::PushImmediate(5));
         prog.code.push(Op::Jmp(Cond::NonZero));
         prog.code.push(Op::PushImmediate(2));
         prog.code.push(Op::PushConst);
-        prog.code.push(Op::PushImmediate(2));
+        prog.code.push(Op::PushImmediate(3));
         prog.code.push(Op::Jmp(Cond::Always));
         prog.code.push(Op::PushImmediate(1));
         prog.code.push(Op::PushConst);
