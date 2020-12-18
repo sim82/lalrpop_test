@@ -5,11 +5,8 @@ fn test1(a,b,c) {
     print a, b, c;
 }
 
-fn rec1(a) {
-    print a;
-    if a != 0 {
-        rec1( a - 1 );
-    }
+fn test2() {
+    return 4321;
 }
 
-rec1(10);
+print test2();

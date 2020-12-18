@@ -27,7 +27,7 @@ impl Evaluator {
                     println!("Print: {}", self.eval(e));
                 }
             }
-            Stmt::Block(stmts) => {
+            Stmt::Block(stmts, _) => {
                 for s in stmts {
                     self.execute(s);
                 }
@@ -55,7 +55,8 @@ impl Evaluator {
                 }
             },
             Stmt::Assign(_, _, _) => panic!("not implemented"),
-            Stmt::Call(_, _) => panic!("not implemented"),
+            Stmt::Call(_) => panic!("not implemented"),
+            Stmt::Return(_) => panic!("not implemented"),
         }
     }
     fn eval(&mut self, expr: Expr) -> i64 {
@@ -86,6 +87,7 @@ impl Evaluator {
                 Opcode::GreaterThan => bool_to_i64(self.eval(*a) > self.eval(*b)),
                 Opcode::GreaterEqual => bool_to_i64(self.eval(*a) >= self.eval(*b)),
             },
+            Expr::Call(_, _) => panic!("not implemented"),
             Expr::Error => 666,
         }
     }

@@ -19,8 +19,9 @@ pub enum Stmt {
     Print(Vec<Expr>),
     IfElse(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
-    Block(Vec<Stmt>),
-    Call(Ident, Vec<Expr>),
+    Block(Vec<Stmt>, bool),
+    Call(Expr),
+    Return(Expr),
 }
 
 pub trait HandleMapDedup<T: Eq> {
@@ -45,6 +46,7 @@ pub enum Expr {
     Number(i64),
     EnvLoad(Ident),
     Op(Box<Expr>, Opcode, Box<Expr>),
+    Call(Ident, Vec<Expr>),
     Error,
 }
 
@@ -71,6 +73,7 @@ impl Debug for Expr {
             Number(n) => write!(fmt, "{:?}", n),
             Op(ref l, op, ref r) => write!(fmt, "({:?} {:?} {:?})", l, op, r),
             EnvLoad(ident) => write!(fmt, "load({:?})", ident),
+            Call(name, _) => write!(fmt, "call {:?}(...)", name),
             Error => write!(fmt, "error"),
         }
     }

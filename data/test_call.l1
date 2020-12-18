@@ -1,0 +1,11 @@
+fn test2() {
+    return 1;
+}
+
+fn test1(a,b,c) {
+    print a, b, c;
+    test2();
+    return a+b+c;
+}
+print test1(1,2,3);
+print test1(1234,5678,9123);

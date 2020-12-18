@@ -1,0 +1,12 @@
+fn fib(n) {
+    let res = 0;
+
+    if n <= 2 {
+        res = 1;
+    } else {
+        res = fib(n-1) + fib(n-2);
+    }
+    return res;
+}
+let n = 35;
+print n, fib(n);

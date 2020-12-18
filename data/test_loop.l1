@@ -1,6 +1,6 @@
-let a = 100000000;
+let a = 10;
 while a != 0 {
-
-    let b = 1;
+    let b = 123;
+    print a, b;
     a = a - 1;
 }

@@ -12,7 +12,7 @@ Toplevel : Toplevel = {
     Declaration => Toplevel::Declaration(<>),
 }
 
-Declaration : Declaration = "fn" <Ident> "(" <Comma<Ident>> ")" <BlockStmt> => Declaration::Function(<>);
+Declaration : Declaration = "fn" <Ident> "(" <Comma<Ident>> ")" <FunctionBodyStmt> => Declaration::Function(<>);
 
 Stmt : Stmt = {
     <InlineStmt> ";",
@@ -28,18 +28,21 @@ InlineStmt = {
     <PrintStmt>,
     <AssignStmt>,
     <CallStmt>,
+    <ReturnStmt>,
 }
 
 IfStmt: Stmt = "if" <expr:Expr> <if_body:BlockStmt> <else_body:("else" <Stmt>)?> => match else_body {
     Some(body) => Stmt::IfElse(expr, Box::new(if_body), Some(Box::new(body))),
     None => Stmt::IfElse(expr, Box::new(if_body), None),
 };
-BlockStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>);
+FunctionBodyStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>, false);
+BlockStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>, true);
 LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr);
 AssignStmt: Stmt = <name:Ident> "=" <expr:Expr> => Stmt::Assign(name, expr, None);
-CallStmt: Stmt = <name:Ident> "(" <exprs:Exprs> ")" => Stmt::Call(name, exprs);
+CallStmt: Stmt = <CallExpr> => Stmt::Call(<>);
 PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
 WhileStmt: Stmt = "while" <expr:Expr> <body:BlockStmt> => Stmt::While(expr, Box::new(body));
+ReturnStmt: Stmt = "return" <Expr> => Stmt::Return(<>);
 //ExprStmt : Stmt = <Expr> => Stmt::Expr(<>);
 pub Exprs = Comma<Expr>; // (0)
 
@@ -83,9 +86,11 @@ MulOp: Opcode = {
 Term: Expr = {
     Num => Expr::Number(<>),
     Ident => Expr::EnvLoad(<>),
+    CallExpr,
     "(" <Expr> ")",
     ! => { errors.push(<>); Expr::Error },
 };
+CallExpr: Expr = <name:Ident> "(" <exprs:Exprs> ")" => Expr::Call(name, exprs);
 
 Ident: Ident = r"[a-zA-Z_]\w*" => env.get_dedup(<>);
 

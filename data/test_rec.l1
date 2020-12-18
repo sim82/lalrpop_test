@@ -1,8 +1,14 @@
 
 fn rec1(a) {
+    print a;
+    let x = 0;
+
     if a != 0 {
         rec1( a - 1 );
     }
+    return 1;
 }
 
-rec1(100000000);
+{
+rec1(3);
+}

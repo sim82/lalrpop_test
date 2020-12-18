@@ -1,11 +1,30 @@
 let a = 123;
+let b = 0;
+let if_true = 0;
+let if_false = 0;
 { 
     {
         let a = 321;
+        b = 321;
         let b = 432;
  
         print a;
+        print b;
     }
+    if a <= 123 {
+        if_true = 666;
+    } else {
+        if_true = 777;
+    }
+    if a >= 321 {
+        if_false = 888;
+    } else {
+        if_false = 999;
+    }
+    
     print a;
 }
 print a;
+print b;
+print if_true;
+print if_false;

@@ -117,6 +117,12 @@ pub struct Vm {
     pub num_ops: usize,
     pub max_ops: Option<usize>,
 }
+impl std::fmt::Debug for Vm {
+    fn fmt(&self, fmt : &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        writeln!(fmt, "ip: {}, stack: {}", self.ip, self.stack.len())
+    }
+}
+
 pub struct IoChannels {
     pub channels: Vec<Sender<i64>>,
 }
@@ -198,7 +204,13 @@ impl Vm {
                 Op::Arith(op) => {
                     let b = self.pop();
                     let a = self.pop();
-                    self.push(op.eval(a, b));
+                    let c = op.eval(a, b);
+                    // debug!( "{} = {} {:?} {}", c, a, op, b);
+                    self.push(c);
+
+                    // let b = self.pop();
+                    // let a = self.stack.last_mut().unwrap();
+                    // *a = op.eval(a.clone(), b);
                 }
                 Op::PushImmediate(v) => self.push(v as i64),
                 Op::PushImmediate24(v) => {

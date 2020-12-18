@@ -11,6 +11,7 @@ use std::io::Read;
 struct StackFrame {
     bindings: HashMap<Ident, usize>,
     stack_top: usize,
+    bindings_top: usize,
 }
 
 impl StackFrame {
@@ -18,6 +19,7 @@ impl StackFrame {
         StackFrame {
             bindings: HashMap::new(),
             stack_top,
+            bindings_top: stack_top,
         }
     }
 }
@@ -33,11 +35,11 @@ impl ScopeStack {
         }
     }
 
-    fn push(&mut self) {
+    fn push_frame(&mut self) {
         let top = self.frames.last().unwrap().stack_top;
         self.frames.push(StackFrame::new(top));
     }
-    fn pop(&mut self) -> usize {
+    fn pop_frame(&mut self) -> usize {
         let top = self.frames.last().unwrap().stack_top;
         self.frames.pop();
         let new_top = self.frames.last().unwrap().stack_top;
@@ -46,18 +48,47 @@ impl ScopeStack {
     }
     fn add_binding(&mut self, ident: Ident) {
         let frame = self.frames.last_mut().unwrap();
-        frame.bindings.insert(ident, frame.stack_top);
+        assert!(frame.stack_top > 0);
+        frame.bindings.insert(ident, frame.stack_top - 1);
+        // frame.stack_top += 1;
+        debug!(
+            "add binding: {:?} {} -> {}",
+            ident,
+            frame.bindings_top,
+            frame.stack_top - 1
+        );
+
+        frame.bindings_top = frame.stack_top - 1;
+    }
+    fn push_local(&mut self) {
+        let frame = self.frames.last_mut().unwrap();
+
+        debug!("push local {} -> {}", frame.stack_top, frame.stack_top + 1);
         frame.stack_top += 1;
     }
-    fn push_pseudo(&mut self) {
+    fn pop_local(&mut self, num: usize) {
         let frame = self.frames.last_mut().unwrap();
-        frame.stack_top += 1;
+        debug!(
+            "pop local {} -> {}",
+            frame.stack_top,
+            frame.stack_top as i64 - num as i64
+        );
+
+        assert!(frame.stack_top - num >= frame.bindings_top);
+        frame.stack_top -= num;
     }
     fn resolve(&self, ident: &Ident) -> Option<usize> {
         let top = self.frames.last().unwrap().stack_top;
         for frame in self.frames.iter().rev() {
             if let Some(pos) = frame.bindings.get(ident) {
                 assert!(top > *pos);
+                debug!(
+                    "resolve local: {:?} {} {} -> {}",
+                    ident,
+                    top,
+                    pos,
+                    top - pos - 1
+                );
                 return Some(top - pos - 1);
             }
         }
@@ -90,9 +121,9 @@ impl<'env> CodeGen<'env> {
     fn emit(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::LetBinding(ident, expr) => {
-                self.scopes.add_binding(ident.clone());
                 // self.bindings.insert(ident.clone(), self.stack_top);
                 self.emit_expr(expr);
+                self.scopes.add_binding(ident.clone());
             }
             Stmt::Assign(ident, expr, op) => {
                 assert!(op.is_none());
@@ -100,6 +131,7 @@ impl<'env> CodeGen<'env> {
                     self.emit_expr(expr);
                     // self.asm_out.push(asm::Stmt::PushInline(offs as i64));
                     self.asm_out.push(asm::Stmt::Move(offs as i64));
+                    self.scopes.pop_local(1);
                 } else {
                     panic!("unknown binding: {}", self.env.get(*ident).unwrap());
                 }
@@ -109,6 +141,7 @@ impl<'env> CodeGen<'env> {
                 let label = self.alloc_label("if_end");
                 self.asm_out
                     .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(label.clone())));
+                self.scopes.pop_local(1);
                 self.emit(if_stmt);
                 self.asm_out.push(asm::Stmt::Label(label));
             }
@@ -117,6 +150,10 @@ impl<'env> CodeGen<'env> {
                 let else_label = self.alloc_label("else");
                 self.asm_out
                     .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(else_label.clone())));
+                self.scopes.pop_local(1);
+                let dbg_label = self.alloc_label("if_else_begin");
+                self.asm_out.push(asm::Stmt::Label(dbg_label));
+
                 self.emit(if_stmt);
                 let end_label = self.alloc_label("else_end");
                 self.asm_out
@@ -132,42 +169,54 @@ impl<'env> CodeGen<'env> {
                 let exit_label = self.alloc_label("while_end");
                 self.asm_out
                     .push(asm::Stmt::Jmp(asm::Cond::Zero, Some(exit_label.clone())));
+                self.scopes.pop_local(1);
+
                 self.emit(body);
                 self.asm_out
                     .push(asm::Stmt::Jmp(asm::Cond::Always, Some(start_label)));
                 self.asm_out.push(asm::Stmt::Label(exit_label));
             }
-            Stmt::Block(stmts) => {
-                self.scopes.push();
+            Stmt::Block(stmts, cleanup_stack) => {
+                self.scopes.push_frame();
                 for s in stmts {
                     self.emit(s);
                 }
-                let num_pop = self.scopes.pop();
+                let mut num_pop = self.scopes.pop_frame();
+                if !*cleanup_stack {
+                    assert!(num_pop >= 1); // we must leave on element on the stack as return value
+                    num_pop -= 1;
+                }
+                debug!("scope exit: {} {:?}", num_pop, cleanup_stack);
+
                 self.asm_out.push(asm::Stmt::Pop(num_pop as i64));
-                debug!("scope exit: {}", num_pop);
             }
             Stmt::Print(exprs) => {
                 for e in exprs {
                     self.emit_expr(e);
                     self.asm_out.push(asm::Stmt::Output(0));
+                    self.scopes.pop_local(1);
                 }
             }
-            Stmt::Call(name, exprs) => {
-                for e in exprs {
-                    self.emit_expr(e);
-                }
-                let name: String = format!("func_{}", *self.env.get(*name).unwrap());
-                self.asm_out.push(asm::Stmt::Call(name));
-                self.asm_out.push(asm::Stmt::Pop(exprs.len() as i64));
+            Stmt::Call(expr) => {
+                self.emit_expr(expr);
+                self.asm_out.push(asm::Stmt::Pop(1));
+                self.scopes.pop_local(1);
+            }
+            Stmt::Return(e) => {
+                self.emit_expr(e);
             }
         }
     }
     fn emit_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Number(v) => self.asm_out.push(asm::Stmt::PushInline(*v)),
+            Expr::Number(v) => {
+                self.asm_out.push(asm::Stmt::PushInline(*v));
+                self.scopes.push_local();
+            }
             Expr::EnvLoad(ident) => {
                 if let Some(offs) = self.scopes.resolve(ident) {
                     self.asm_out.push(asm::Stmt::PushStack(offs as i64));
+                    self.scopes.push_local();
                 } else {
                     panic!("unknown binding: {}", self.env.get(*ident).unwrap());
                 }
@@ -195,7 +244,21 @@ impl<'env> CodeGen<'env> {
                     Opcode::LessThan | Opcode::GreaterThan => asm::ArithOp::LessThan,
                     Opcode::LessEqual | Opcode::GreaterEqual => asm::ArithOp::LessEqual,
                 };
+                self.scopes.pop_local(2);
                 self.asm_out.push(asm::Stmt::Arith(op));
+                self.scopes.push_local();
+            }
+            Expr::Call(name, exprs) => {
+                self.asm_out.push(asm::Stmt::PushInline(0));
+                self.scopes.push_local();
+                for e in exprs {
+                    self.emit_expr(e);
+                }
+                let name: String = format!("func_{}", *self.env.get(*name).unwrap());
+                self.asm_out.push(asm::Stmt::Call(name));
+                self.asm_out.push(asm::Stmt::Pop(exprs.len() as i64));
+                self.scopes.pop_local(exprs.len());
+                // self.scopes.push_local();
             }
             Expr::Error => panic!("found Expr::Error in emit_expr"),
         }
@@ -241,14 +304,16 @@ fn main() {
                     "func_{}",
                     env.get(*name).unwrap()
                 )));
-                codegen.scopes.push();
+                codegen.scopes.push_frame();
                 for a in args {
+                    codegen.scopes.push_local();
                     codegen.scopes.add_binding(a.clone());
                 }
-                codegen.scopes.push_pseudo(); // for return address
+                codegen.scopes.push_local(); // for return address
                 codegen.emit(body);
+                codegen.asm_out.push(asm::Stmt::Move(args.len() as i64 + 1));
                 codegen.emit_return();
-                codegen.scopes.pop();
+                codegen.scopes.pop_frame();
             }
         }
     }

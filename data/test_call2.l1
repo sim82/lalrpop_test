@@ -1,0 +1,8 @@
+fn test() {
+    let x = 123;
+    print 1;
+    return 1;
+}
+
+
+test();

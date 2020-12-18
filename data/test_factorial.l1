@@ -1,0 +1,12 @@
+fn fac(n) {
+    let res = 0;
+    if n <= 1 {
+        res = 1;
+    } else {
+        res = n * fac(n-1);
+    }
+    return res;
+}
+
+let n = 10;
+print n, fac(n);
