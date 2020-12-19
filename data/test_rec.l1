@@ -9,6 +9,8 @@ fn rec1(a) {
     return 1;
 }
 
+fn main()
 {
-rec1(3);
+    rec1(100);
 }
+main();

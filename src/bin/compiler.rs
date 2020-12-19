@@ -96,15 +96,15 @@ impl ScopeStack {
     }
 }
 
-struct CodeGen<'env> {
+struct CodeGen {
     scopes: ScopeStack,
     asm_out: Vec<asm::Stmt>,
     label_count: HashMap<String, usize>,
-    env: &'env HandleMap<&'env str>,
+    env: HandleMap<String>,
 }
 
-impl<'env> CodeGen<'env> {
-    pub fn new(env: &'env HandleMap<&'env str>) -> CodeGen<'env> {
+impl CodeGen {
+    pub fn new(env: HandleMap<String>) -> CodeGen {
         CodeGen {
             scopes: ScopeStack::new(),
             asm_out: Vec::new(),
@@ -289,7 +289,7 @@ fn main() {
         }
     }
 
-    let mut codegen = CodeGen::new(&env);
+    let mut codegen = CodeGen::new(env.clone());
 
     if !decls.is_empty() {
         codegen
@@ -343,7 +343,7 @@ mod compiler_test {
             .parse(&mut env, &mut errors, code)
             .unwrap();
 
-        let mut codegen = CodeGen::new(&env);
+        let mut codegen = CodeGen::new(env.clone());
 
         for p in &program {
             match p {

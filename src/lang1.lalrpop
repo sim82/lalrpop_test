@@ -3,7 +3,7 @@ use crate::{ast::{Expr, Opcode, Ident, Stmt, HandleMapDedup, Toplevel, Declarati
 use lalrpop_util::ErrorRecovery;
 
 //grammar;
-grammar<'err>(env: &mut dyn HandleMapDedup<&'input str>, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
+grammar<'err>(env: &mut dyn HandleMapDedup<String>, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 
 pub Program = Toplevel*;
 
@@ -92,7 +92,7 @@ Term: Expr = {
 };
 CallExpr: Expr = <name:Ident> "(" <exprs:Exprs> ")" => Expr::Call(name, exprs);
 
-Ident: Ident = r"[a-zA-Z_]\w*" => env.get_dedup(<>);
+Ident: Ident = r"[a-zA-Z_]\w*" => env.get_dedup(<>.into());
 
 Literal: i64 = {
     "true" => 1,
