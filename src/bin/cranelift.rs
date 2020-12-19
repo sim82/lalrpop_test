@@ -6,7 +6,11 @@ use std::{
 
 use codegen::Context;
 use cranelift::{
-    codegen::{binemit::NullTrapSink, ir::Function, verifier::verify_function},
+    codegen::{
+        binemit::NullTrapSink,
+        ir::{Function, Value},
+        verifier::verify_function,
+    },
     prelude::isa::CallConv,
     prelude::types::*,
     prelude::*,
@@ -190,6 +194,45 @@ impl Program {
             toplevel,
         }
     }
+    fn emit_expr(&self, bcx: &mut FunctionBuilder, expr: &Expr) -> Value {
+        match expr {
+            Expr::Number(n) => bcx.ins().iconst(types::I64, *n),
+            Expr::EnvLoad(_) => bcx.ins().iconst(types::I64, 0),
+            Expr::Op(e1, op, e2) => {
+                let v1 = self.emit_expr(bcx, &e1);
+                let v2 = self.emit_expr(bcx, &e2);
+                match op {
+                    Opcode::Add => bcx.ins().iadd(v1, v2),
+                    Opcode::Mul => bcx.ins().imul(v1, v2),
+                    _ => panic!("not implemented"),
+                }
+            }
+            Expr::Call(_, _) => bcx.ins().iconst(types::I64, 0),
+            _ => panic!("not implemented"),
+            // Expr::Error => {}
+        }
+    }
+
+    fn emit_stmt(&self, bcx: &mut FunctionBuilder, stmt: &Stmt) {
+        match stmt {
+            Stmt::LetBinding(_, _) => {}
+            Stmt::Assign(_, _, _) => {}
+            Stmt::Print(_) => {}
+            Stmt::IfElse(_, _, _) => {}
+            Stmt::While(_, _) => {}
+            Stmt::Block(stmts, b) => {
+                for s in stmts.iter() {
+                    self.emit_stmt(bcx, s);
+                }
+            }
+            Stmt::Call(_) => {}
+            Stmt::Return(e) => {
+                let v = self.emit_expr(bcx, e);
+                bcx.ins().return_(&[v]);
+            }
+        }
+    }
+
     fn emit_function<M: Module>(
         &self,
         module: &mut M,
@@ -205,7 +248,7 @@ impl Program {
             .declare_function(self.env.get(name).unwrap(), Linkage::Export, &sig)
             .unwrap();
 
-        sig.returns.push(AbiParam::new(types::I32));
+        sig.returns.push(AbiParam::new(types::I64));
         for a in args {
             sig.params.push(AbiParam::new(types::I32));
         }
@@ -216,10 +259,11 @@ impl Program {
         let block = bcx.create_block();
         bcx.switch_to_block(block);
 
-        let arg = bcx.ins().iconst(types::I32, 5);
+        // let arg = bcx.ins().iconst(types::I32, 5);
 
         bcx.append_block_params_for_function_params(block);
-        bcx.ins().return_(&[arg]);
+        self.emit_stmt(&mut bcx, body);
+        // bcx.ins().return_(&[arg]);
         bcx.seal_all_blocks();
         bcx.finalize();
         let mut trap_sink = NullTrapSink {};

@@ -11,3 +11,5 @@ Cargo.lock
 
 **/*.bc
 **/*.xas
+**/*.o
+**/a.out
