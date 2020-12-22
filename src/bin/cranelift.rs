@@ -1,28 +1,24 @@
 use std::{
+    collections::HashMap,
     fs::File,
     io::{Read, Write},
-    mem,
 };
 
 use codegen::Context;
 use cranelift::{
     codegen::{
         binemit::NullTrapSink,
-        ir::{Function, Value},
-        verifier::verify_function,
+        ir::{self, Value},
     },
-    prelude::isa::CallConv,
-    prelude::types::*,
     prelude::*,
 };
 
-use cranelift_module::{default_libcall_names, Linkage, Module};
+use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use cranelift_simplejit::{SimpleJITBuilder, SimpleJITModule, SimpleJITProduct};
+
 use handy::{Handle, HandleMap};
 use lalrpop_test::{
-    asm::{self, Disass},
-    ast::{Declaration, Expr, Ident, Opcode, Stmt, Toplevel},
+    ast::{Declaration, Expr, Opcode, Stmt, Toplevel},
     lang1,
 };
 fn main() {
@@ -143,30 +139,136 @@ fn test() {
 
     let mut ctx = module.make_context();
     let mut func_ctx = FunctionBuilderContext::new();
+    let mut emit_state = EmitStateGen::<_> {
+        functions: Default::default(),
+        scope_stack: Default::default(),
+        module,
+    };
     for d in program.decls.iter() {
         match d {
             Declaration::Function(name, args, body) => {
+                let name = program.env.get(*name).unwrap();
+                let mut sig = emit_state.module.make_signature();
+
+                sig.returns.push(AbiParam::new(types::I64));
+                for a in args {
+                    sig.params.push(AbiParam::new(types::I64));
+                }
+                let func = emit_state
+                    .module
+                    .declare_function(name, Linkage::Export, &sig)
+                    .unwrap();
+                emit_state.functions.insert(name.clone(), func);
+
                 program.emit_function(
-                    &mut module,
+                    &mut emit_state,
                     &mut ctx,
                     &mut func_ctx,
-                    *name,
+                    func,
+                    sig,
                     args.clone(),
                     body,
                 );
+                let mut trap_sink = NullTrapSink {};
+                emit_state
+                    .module
+                    .define_function(func, &mut ctx, &mut trap_sink)
+                    .unwrap();
+                emit_state.module.clear_context(&mut ctx);
             }
         }
     }
-    let product = module.finish();
+
+    if !program.toplevel.is_empty() {
+        let mut sig = emit_state.module.make_signature();
+        let func = emit_state
+            .module
+            .declare_function("main", Linkage::Export, &sig)
+            .unwrap();
+        sig.returns.push(AbiParam::new(types::I64));
+        program.emit_function(
+            &mut emit_state,
+            &mut ctx,
+            &mut func_ctx,
+            func,
+            sig,
+            vec![],
+            &Stmt::Block(program.toplevel.clone(), false),
+        );
+        let mut trap_sink = NullTrapSink {};
+        emit_state
+            .module
+            .define_function(func, &mut ctx, &mut trap_sink)
+            .unwrap();
+        emit_state.module.clear_context(&mut ctx);
+    }
+
+    let product = emit_state.module.finish();
     let o = product.object.write().unwrap();
     let mut f = File::create("test.o").unwrap();
     f.write_all(&o).unwrap();
 }
 
+#[derive(Default)]
 struct Program {
     env: HandleMap<String>,
     decls: Vec<Declaration>,
     toplevel: Vec<Stmt>,
+}
+
+trait EmitState {
+    fn declare_func_in_func(&mut self, func_id: FuncId, bcx: &mut FunctionBuilder) -> ir::FuncRef;
+    fn get_function(&self, name: &str) -> FuncId;
+    fn get_scope_stack(&mut self) -> &ScopeStack;
+    fn get_scope_stack_mut(&mut self) -> &mut ScopeStack;
+}
+
+#[derive(Default)]
+struct ScopeStack {
+    scopes: Vec<HashMap<String, Value>>,
+}
+
+impl ScopeStack {
+    fn bind_value(&mut self, name: &str, v: Value) {
+        self.scopes.last_mut().unwrap().insert(name.to_string(), v);
+    }
+    fn get_value(&self, name: &str) -> Value {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(name) {
+                return *v;
+            }
+        }
+        panic!("name '{}' not bound in {:?}", name, self.scopes)
+    }
+
+    fn push(&mut self) {
+        self.scopes.push(Default::default())
+    }
+    fn pop(&mut self) {
+        self.scopes.pop();
+    }
+}
+
+struct EmitStateGen<M: Module> {
+    functions: HashMap<String, FuncId>,
+    scope_stack: ScopeStack,
+    module: M,
+}
+
+impl<M: Module> EmitState for EmitStateGen<M> {
+    fn declare_func_in_func(&mut self, func_id: FuncId, bcx: &mut FunctionBuilder) -> ir::FuncRef {
+        self.module.declare_func_in_func(func_id, bcx.func)
+    }
+
+    fn get_function(&self, name: &str) -> FuncId {
+        self.functions.get(name).unwrap().clone()
+    }
+    fn get_scope_stack(&mut self) -> &ScopeStack {
+        &self.scope_stack
+    }
+    fn get_scope_stack_mut(&mut self) -> &mut ScopeStack {
+        &mut self.scope_stack
+    }
 }
 
 impl Program {
@@ -192,82 +294,115 @@ impl Program {
             env,
             decls,
             toplevel,
+            ..Default::default()
         }
     }
-    fn emit_expr(&self, bcx: &mut FunctionBuilder, expr: &Expr) -> Value {
+    fn env_get(&self, h: &Handle) -> &str {
+        self.env.get(*h).unwrap()
+    }
+    fn emit_expr(
+        &self,
+        bcx: &mut FunctionBuilder,
+        emit_state: &mut dyn EmitState,
+        expr: &Expr,
+    ) -> Value {
+        println!("emit_expr: {:?}", expr);
         match expr {
             Expr::Number(n) => bcx.ins().iconst(types::I64, *n),
-            Expr::EnvLoad(_) => bcx.ins().iconst(types::I64, 0),
+            Expr::EnvLoad(h) => emit_state.get_scope_stack().get_value(self.env_get(h)),
             Expr::Op(e1, op, e2) => {
-                let v1 = self.emit_expr(bcx, &e1);
-                let v2 = self.emit_expr(bcx, &e2);
+                let v1 = self.emit_expr(bcx, emit_state, &e1);
+                let v2 = self.emit_expr(bcx, emit_state, &e2);
                 match op {
                     Opcode::Add => bcx.ins().iadd(v1, v2),
                     Opcode::Mul => bcx.ins().imul(v1, v2),
                     _ => panic!("not implemented"),
                 }
             }
-            Expr::Call(_, _) => bcx.ins().iconst(types::I64, 0),
+            Expr::Call(name, args) => {
+                let func_id = emit_state.get_function(self.env_get(name));
+
+                let argsv = args
+                    .iter()
+                    .map(|arg| self.emit_expr(bcx, emit_state, arg))
+                    .collect::<Vec<_>>();
+                let local_func = emit_state.declare_func_in_func(func_id, bcx);
+                let call = bcx.ins().call(local_func, &argsv[..]);
+                let results = bcx.inst_results(call);
+                assert_eq!(results.len(), 1);
+                results[0].clone()
+            }
             _ => panic!("not implemented"),
             // Expr::Error => {}
         }
     }
 
-    fn emit_stmt(&self, bcx: &mut FunctionBuilder, stmt: &Stmt) {
+    fn emit_stmt(&self, bcx: &mut FunctionBuilder, emit_state: &mut dyn EmitState, stmt: &Stmt) {
+        println!("emit_stmt: {:?}", stmt);
         match stmt {
-            Stmt::LetBinding(_, _) => {}
+            Stmt::LetBinding(name, expr) => {
+                // let slot = bcx.create_stack_slot(StackSlotData {
+                //     kind: StackSlotKind::ExplicitSlot,
+                //     size: 8,
+                //     offset: None,
+                // });
+                let v = self.emit_expr(bcx, emit_state, expr);
+                // bcx.ins().stack_store(v, slot, 0);
+                emit_state
+                    .get_scope_stack_mut()
+                    .bind_value(self.env_get(name), v);
+            }
             Stmt::Assign(_, _, _) => {}
             Stmt::Print(_) => {}
             Stmt::IfElse(_, _, _) => {}
             Stmt::While(_, _) => {}
-            Stmt::Block(stmts, b) => {
+            Stmt::Block(stmts, _) => {
+                emit_state.get_scope_stack_mut().push();
                 for s in stmts.iter() {
-                    self.emit_stmt(bcx, s);
+                    self.emit_stmt(bcx, emit_state, s);
                 }
+                emit_state.get_scope_stack_mut().pop();
             }
-            Stmt::Call(_) => {}
+            Stmt::Call(expr) => {
+                self.emit_expr(bcx, emit_state, expr);
+            }
             Stmt::Return(e) => {
-                let v = self.emit_expr(bcx, e);
+                let v = self.emit_expr(bcx, emit_state, e);
                 bcx.ins().return_(&[v]);
             }
         }
     }
 
-    fn emit_function<M: Module>(
+    fn emit_function(
         &self,
-        module: &mut M,
+        emit_state: &mut dyn EmitState,
         ctx: &mut Context,
         func_ctx: &mut FunctionBuilderContext,
-        name: Handle,
+        func: FuncId,
+        sig: Signature,
         args: Vec<Handle>,
         body: &Stmt,
     ) {
-        let mut sig = module.make_signature();
-
-        let func = module
-            .declare_function(self.env.get(name).unwrap(), Linkage::Export, &sig)
-            .unwrap();
-
-        sig.returns.push(AbiParam::new(types::I64));
-        for a in args {
-            sig.params.push(AbiParam::new(types::I32));
-        }
-
         ctx.func.signature = sig;
         ctx.func.name = ExternalName::user(0, func.as_u32());
         let mut bcx: FunctionBuilder = FunctionBuilder::new(&mut ctx.func, func_ctx);
         let block = bcx.create_block();
+        emit_state.get_scope_stack_mut().push();
         bcx.switch_to_block(block);
 
-        // let arg = bcx.ins().iconst(types::I32, 5);
-
         bcx.append_block_params_for_function_params(block);
-        self.emit_stmt(&mut bcx, body);
+        // bcx.append_block_params_for_function_params(block);
+
+        for (i, arg) in args.iter().enumerate() {
+            emit_state
+                .get_scope_stack_mut()
+                .bind_value(self.env_get(arg), bcx.block_params(block)[i])
+        }
+
+        self.emit_stmt(&mut bcx, emit_state, body);
         // bcx.ins().return_(&[arg]);
         bcx.seal_all_blocks();
         bcx.finalize();
-        let mut trap_sink = NullTrapSink {};
-        module.define_function(func, ctx, &mut trap_sink).unwrap();
-        module.clear_context(ctx);
+        emit_state.get_scope_stack_mut().pop();
     }
 }

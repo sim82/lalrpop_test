@@ -1,4 +1,14 @@
 
-fn test1(a) {
-    return 1 + 2 * 5 + 4 * 7 * 4 + 2 * 2 + 11;
+fn test1(a,b) {
+    let x = 2;
+    {
+        let b = 1234;
+    }
+    {
+        let bx = 8;
+        return a + x + b;
+    }
+    
 }
+let a = 2 + 2;
+return test1(a,16) + 1; 
