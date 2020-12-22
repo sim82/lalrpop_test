@@ -1,12 +1,13 @@
 fn fib(n) {
-    let res = 0;
-
     if n <= 2 {
-        res = 1;
+        return 1;
     } else {
-        res = fib(n-1) + fib(n-2);
+        return fib(n-1) + fib(n-2);
     }
-    return res;
 }
-let n = 35;
-print n, fib(n);
+let n = 40;
+if fib(n) == 102334155 {
+    return 123;
+} else {
+    return 0;
+}

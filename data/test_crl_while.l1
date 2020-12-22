@@ -1,0 +1,10 @@
+let mut a = 10;
+let mut b = 0;
+
+while a {
+    a = a - 1;
+    b = b + 2;
+}
+
+
+return b;

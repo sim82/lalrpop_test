@@ -361,7 +361,10 @@ impl Program {
                 match op {
                     Opcode::Add => bcx.ins().iadd(v1, v2),
                     Opcode::Mul => bcx.ins().imul(v1, v2),
-                    _ => panic!("not implemented"),
+                    Opcode::Sub => bcx.ins().isub(v1, v2),
+                    Opcode::Equal => bcx.ins().icmp(IntCC::Equal, v1, v2),
+                    Opcode::LessEqual => bcx.ins().icmp(IntCC::SignedLessThanOrEqual, v1, v2),
+                    _ => panic!("not implemented {:?}", op),
                 }
             }
             Expr::Call(name, args) => {
@@ -413,8 +416,8 @@ impl Program {
                 let if_block = bcx.create_block();
                 let else_block = bcx.create_block();
 
-                bcx.ins().brnz(v, if_block, &[]);
-                bcx.ins().jump(else_block, &[]);
+                bcx.ins().brz(v, else_block, &[]);
+                bcx.ins().jump(if_block, &[]);
                 emit_state.get_scope_stack_mut().push();
                 bcx.switch_to_block(if_block);
                 self.emit_stmt(bcx, emit_state, if_stmt);
@@ -434,6 +437,9 @@ impl Program {
                         continue_reachable = continue_reachable || true;
                     }
                     emit_state.get_scope_stack_mut().pop();
+                } else {
+                    continue_reachable = true;
+                    bcx.ins().jump(continue_block, &[]);
                 }
 
                 bcx.switch_to_block(continue_block);
@@ -441,7 +447,27 @@ impl Program {
                     bcx.ins().trap(TrapCode::UnreachableCodeReached);
                 }
             }
-            Stmt::While(_, _) => {}
+            Stmt::While(expr, stmt) => {
+                let continue_block = bcx.create_block();
+                let cond_block = bcx.create_block();
+                let while_block = bcx.create_block();
+
+                bcx.ins().jump(cond_block, &[]);
+
+                bcx.switch_to_block(cond_block);
+                let condv = self.emit_expr(bcx, emit_state, expr);
+                bcx.ins().brz(condv, continue_block, &[]);
+                bcx.ins().jump(while_block, &[]);
+
+                bcx.switch_to_block(while_block);
+                emit_state.get_scope_stack_mut().push();
+                self.emit_stmt(bcx, emit_state, stmt);
+                // if !bcx.is_filled() {
+                bcx.ins().jump(cond_block, &[]);
+                // }
+                emit_state.get_scope_stack_mut().pop();
+                bcx.switch_to_block(continue_block);
+            }
             Stmt::Block(stmts, _) => {
                 emit_state.get_scope_stack_mut().push();
                 for s in stmts.iter() {

@@ -6,6 +6,6 @@ def ack(n, m):
     else:
         return ack(n - 1, ack(n, m - 1))
 
-n = 5
-m = 0
+n = 3
+m = 8
 print (n, m, ack(n, m))
