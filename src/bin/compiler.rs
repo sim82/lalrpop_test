@@ -120,7 +120,7 @@ impl CodeGen {
     }
     fn emit(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::LetBinding(ident, expr) => {
+            Stmt::LetBinding(ident, expr, _) => {
                 // self.bindings.insert(ident.clone(), self.stack_top);
                 self.emit_expr(expr);
                 self.scopes.add_binding(ident.clone());

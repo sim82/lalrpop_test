@@ -1,3 +1,6 @@
 
-let a = 1;
-return a;
+let mut a = 1;
+let mut b = 2;
+let mut c = 3;
+b = 12;
+return a + b + c;

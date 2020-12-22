@@ -17,7 +17,7 @@ impl Evaluator {
 
     pub fn execute(&mut self, stmt: Stmt) {
         match stmt {
-            Stmt::LetBinding(ident, expr) => {
+            Stmt::LetBinding(ident, expr, _) => {
                 let v = self.eval(expr);
                 // let h = self.ide
                 self.env.insert(ident, v);

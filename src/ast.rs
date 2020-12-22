@@ -14,7 +14,7 @@ pub enum Declaration {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    LetBinding(Ident, Expr),
+    LetBinding(Ident, Expr, bool),
     Assign(Ident, Expr, Option<Opcode>),
     Print(Vec<Expr>),
     IfElse(Expr, Box<Stmt>, Option<Box<Stmt>>),

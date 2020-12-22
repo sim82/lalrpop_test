@@ -8,7 +8,7 @@ use codegen::Context;
 use cranelift::{
     codegen::{
         binemit::NullTrapSink,
-        ir::{self, Value},
+        ir::{self, StackSlot, Value},
     },
     prelude::*,
 };
@@ -223,19 +223,59 @@ trait EmitState {
     fn get_scope_stack_mut(&mut self) -> &mut ScopeStack;
 }
 
+#[derive(Debug)]
+enum ScopeValue {
+    Value(Value),
+    StackSlot(StackSlot),
+}
 #[derive(Default)]
 struct ScopeStack {
-    scopes: Vec<HashMap<String, Value>>,
+    scopes: Vec<HashMap<String, ScopeValue>>,
 }
 
 impl ScopeStack {
-    fn bind_value(&mut self, name: &str, v: Value) {
-        self.scopes.last_mut().unwrap().insert(name.to_string(), v);
+    fn bind_value(&mut self, name: &str, v: Value, bcx: Option<&mut FunctionBuilder>) {
+        if let Some(bcx) = bcx {
+            let slot = bcx.create_stack_slot(StackSlotData {
+                kind: StackSlotKind::ExplicitSlot,
+                size: 8,
+                offset: None,
+            });
+            bcx.ins().stack_store(v, slot, 0);
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(name.to_string(), ScopeValue::StackSlot(slot));
+        } else {
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(name.to_string(), ScopeValue::Value(v));
+        }
     }
-    fn get_value(&self, name: &str) -> Value {
+    fn get_value(&self, name: &str, bcx: Option<&mut FunctionBuilder>) -> Value {
         for scope in self.scopes.iter().rev() {
-            if let Some(v) = scope.get(name) {
-                return *v;
+            match scope.get(name) {
+                Some(ScopeValue::Value(v)) => return *v,
+                Some(ScopeValue::StackSlot(slot)) if bcx.is_some() => {
+                    return bcx.unwrap().ins().stack_load(types::I64, *slot, 0)
+                }
+                _ => (),
+            }
+        }
+        panic!("name '{}' not bound in {:?}", name, self.scopes)
+    }
+    fn store_value(&self, name: &str, v: Value, bcx: &mut FunctionBuilder) {
+        for scope in self.scopes.iter().rev() {
+            match scope.get(name) {
+                Some(ScopeValue::StackSlot(slot)) => {
+                    bcx.ins().stack_store(v, *slot, 0);
+                    return;
+                }
+                Some(ScopeValue::Value(v)) => {
+                    panic!("failed to store: name '{}' bound to immutable value.", name);
+                }
+                _ => (),
             }
         }
         panic!("name '{}' not bound in {:?}", name, self.scopes)
@@ -307,9 +347,14 @@ impl Program {
         expr: &Expr,
     ) -> Value {
         println!("emit_expr: {:?}", expr);
+        if bcx.is_filled() {
+            panic!("unreachable expr");
+        }
         match expr {
             Expr::Number(n) => bcx.ins().iconst(types::I64, *n),
-            Expr::EnvLoad(h) => emit_state.get_scope_stack().get_value(self.env_get(h)),
+            Expr::EnvLoad(h) => emit_state
+                .get_scope_stack()
+                .get_value(self.env_get(h), Some(bcx)),
             Expr::Op(e1, op, e2) => {
                 let v1 = self.emit_expr(bcx, emit_state, &e1);
                 let v2 = self.emit_expr(bcx, emit_state, &e2);
@@ -339,22 +384,63 @@ impl Program {
 
     fn emit_stmt(&self, bcx: &mut FunctionBuilder, emit_state: &mut dyn EmitState, stmt: &Stmt) {
         println!("emit_stmt: {:?}", stmt);
+        if bcx.is_filled() {
+            panic!("unreachable stmt");
+        }
         match stmt {
-            Stmt::LetBinding(name, expr) => {
-                // let slot = bcx.create_stack_slot(StackSlotData {
-                //     kind: StackSlotKind::ExplicitSlot,
-                //     size: 8,
-                //     offset: None,
-                // });
+            Stmt::LetBinding(name, expr, is_mut) => {
                 let v = self.emit_expr(bcx, emit_state, expr);
-                // bcx.ins().stack_store(v, slot, 0);
+                emit_state.get_scope_stack_mut().bind_value(
+                    self.env_get(name),
+                    v,
+                    if *is_mut { Some(bcx) } else { None },
+                );
+            }
+            Stmt::Assign(name, expr, op) => {
+                assert!(op.is_none());
+
+                let v = self.emit_expr(bcx, emit_state, expr);
                 emit_state
                     .get_scope_stack_mut()
-                    .bind_value(self.env_get(name), v);
+                    .store_value(self.env_get(name), v, bcx);
             }
-            Stmt::Assign(_, _, _) => {}
             Stmt::Print(_) => {}
-            Stmt::IfElse(_, _, _) => {}
+            Stmt::IfElse(expr, if_stmt, else_stmt) => {
+                let continue_block = bcx.create_block();
+                let mut continue_reachable = false;
+
+                let v = self.emit_expr(bcx, emit_state, expr);
+                let if_block = bcx.create_block();
+                let else_block = bcx.create_block();
+
+                bcx.ins().brnz(v, if_block, &[]);
+                bcx.ins().jump(else_block, &[]);
+                emit_state.get_scope_stack_mut().push();
+                bcx.switch_to_block(if_block);
+                self.emit_stmt(bcx, emit_state, if_stmt);
+                if !bcx.is_filled() {
+                    bcx.ins().jump(continue_block, &[]);
+                    continue_reachable = continue_reachable || true;
+                }
+                emit_state.get_scope_stack_mut().pop();
+
+                bcx.switch_to_block(else_block);
+
+                if let Some(else_stmt) = else_stmt {
+                    emit_state.get_scope_stack_mut().push();
+                    self.emit_stmt(bcx, emit_state, else_stmt);
+                    if !bcx.is_filled() {
+                        bcx.ins().jump(continue_block, &[]);
+                        continue_reachable = continue_reachable || true;
+                    }
+                    emit_state.get_scope_stack_mut().pop();
+                }
+
+                bcx.switch_to_block(continue_block);
+                if !continue_reachable {
+                    bcx.ins().trap(TrapCode::UnreachableCodeReached);
+                }
+            }
             Stmt::While(_, _) => {}
             Stmt::Block(stmts, _) => {
                 emit_state.get_scope_stack_mut().push();
@@ -394,9 +480,11 @@ impl Program {
         // bcx.append_block_params_for_function_params(block);
 
         for (i, arg) in args.iter().enumerate() {
-            emit_state
-                .get_scope_stack_mut()
-                .bind_value(self.env_get(arg), bcx.block_params(block)[i])
+            emit_state.get_scope_stack_mut().bind_value(
+                self.env_get(arg),
+                bcx.block_params(block)[i],
+                None,
+            )
         }
 
         self.emit_stmt(&mut bcx, emit_state, body);

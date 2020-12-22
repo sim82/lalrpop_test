@@ -37,7 +37,7 @@ IfStmt: Stmt = "if" <expr:Expr> <if_body:BlockStmt> <else_body:("else" <Stmt>)?>
 };
 FunctionBodyStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>, false);
 BlockStmt: Stmt = "{" <Stmt*> "}" => Stmt::Block(<>, true);
-LetBindingStmt: Stmt = "let" <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr);
+LetBindingStmt: Stmt = "let" <m:("mut")?> <name:Ident> "=" <expr:Expr> => Stmt::LetBinding(name, expr, m.is_some());
 AssignStmt: Stmt = <name:Ident> "=" <expr:Expr> => Stmt::Assign(name, expr, None);
 CallStmt: Stmt = <CallExpr> => Stmt::Call(<>);
 PrintStmt: Stmt = "print" <exprs:Exprs> => Stmt::Print(exprs);
